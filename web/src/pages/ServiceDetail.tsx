@@ -273,7 +273,7 @@ export default function ServiceDetail() {
       {/* 流水线 */}
       <Card title="流水线配置" size="small">
         <Form form={pipeForm} layout="vertical" onFinish={handleSavePipeline}
-          initialValues={{ codeSource: 'github', branch: 'main', targetDir: '/opt/app', port: 3000, dockerfile: 'Dockerfile', accessPath: '/' + svc.name, keepImageCount: 3, gitToken: '' }}
+          initialValues={{ codeSource: 'github', branch: 'main', targetDir: '/opt/app', port: 3000, dockerfile: 'Dockerfile', accessPath: '/' + svc.name, keepImageCount: 3, authMode: 'ssh', gitToken: '' }}
         >
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 24px' }}>
             <Form.Item name="codeSource" label="代码源" rules={[{ required: true }]}>
@@ -303,8 +303,24 @@ export default function ServiceDetail() {
             <Form.Item name="keepImageCount" label="保留镜像数" tooltip="发布时自动清理旧镜像，只保留最近 N 个版本的镜像">
               <InputNumber placeholder="3" style={{ width: '100%' }} min={1} max={100} />
             </Form.Item>
-            <Form.Item name="gitToken" label="Git Token" tooltip="GitHub PAT 或 GitLab Access Token，用于拉取私有仓库代码。留空则只能拉取公开仓库。">
-              <Input.Password placeholder="ghp_xxxx 或 glpat-xxxx" />
+            <Form.Item name="authMode" label="认证方式" tooltip="SSH Key：在服务器生成密钥添加到 GitHub/GitLab，永不过期。Token：使用 PAT 认证，有有效期。">
+              <Select options={[
+                { value: 'ssh', label: 'SSH Key（推荐，永不过期）' },
+                { value: 'token', label: 'Git Token' },
+              ]} />
+            </Form.Item>
+            <Form.Item noStyle shouldUpdate={(prev, cur) => prev.authMode !== cur.authMode}>
+              {({ getFieldValue }) =>
+                getFieldValue('authMode') === 'token' ? (
+                  <Form.Item name="gitToken" label="Git Token" tooltip="GitHub PAT 或 GitLab Access Token，用于拉取私有仓库代码。">
+                    <Input.Password placeholder="ghp_xxxx 或 glpat-xxxx" />
+                  </Form.Item>
+                ) : (
+                  <Form.Item label="SSH 状态">
+                    <Input disabled value="使用服务器 SSH Key 认证（需先在服务器配置）" />
+                  </Form.Item>
+                )
+              }
             </Form.Item>
           </div>
           <Form.Item>

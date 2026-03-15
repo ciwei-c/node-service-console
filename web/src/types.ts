@@ -23,6 +23,7 @@ export interface Pipeline {
   dockerfile: string;
   accessPath: string;
   keepImageCount: number;
+  authMode: 'ssh' | 'token';
   gitToken: string;
 }
 

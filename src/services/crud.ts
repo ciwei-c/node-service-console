@@ -35,6 +35,7 @@ export function createService(payload: { name: string }): Service | ErrorResult 
       dockerfile: 'Dockerfile',
       accessPath: '/' + payload.name,
       keepImageCount: 3,
+      authMode: 'ssh',
       gitToken: '',
     },
   };

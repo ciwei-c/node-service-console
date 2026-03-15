@@ -86,6 +86,7 @@ web/                       # React 前端（Vite 构建）
 | 环境变量 | 服务级别 KEY=VALUE 配置 |
 | 流水线配置 | Git 仓库、分支、Dockerfile 路径、保留镜像数 |
 | Git Token | 支持私有仓库 PAT 认证，API 响应自动脱敏 |
+| SSH Key 认证 | 使用服务器 SSH 密钥拉取私有仓库，永不过期，无需 Token |
 | Webhook | GitHub/GitLab push 事件自动触发发布 |
 | 容器监控 | 列出所有 Docker 容器，查看详情/环境变量/端口/日志 |
 | 操作日志 | 全量操作记录，支持时间/服务/类型/结果/关键词筛选 |
@@ -130,31 +131,78 @@ web/                       # React 前端（Vite 构建）
 | GET | `/node-service-console/api/logs` | 日志列表（支持筛选分页） |
 | GET | `/node-service-console/api/logs/service-names` | 有日志的服务名称列表 |
 
-## 部署
+## 部署操作手册
 
-### 方式一：一键安装（推荐）
+> 以下操作均在云服务器上以 **root** 用户执行（适用于 OpenCloudOS 9 等默认 root 登录的系统）。
 
-将项目上传到云服务器后，执行安装脚本即可自动部署并注册为系统服务，**开机自动启动**：
+### 前置条件
+
+服务器需要已安装以下软件：
 
 ```bash
-# 上传项目到服务器后
-chmod +x install.sh
+# 确认是否已安装
+node -v        # Node.js（建议 18+）
+npm -v         # npm
+docker -v      # Docker
+git --version  # Git
+```
+
+如未安装，请先安装对应软件后再继续。
+
+---
+
+### 第一步：首次部署
+
+只需在服务器上执行一次，完成后服务会随系统开机自动启动。
+
+```bash
+# 1. 克隆代码到服务器
+git clone https://github.com/ciwei-c/node-service-console.git /opt/node-service-console
+
+# 2. 进入项目目录
+cd /opt/node-service-console
+
+# 3. 给脚本添加执行权限（只需一次）
+chmod +x install.sh update.sh uninstall.sh
+
+# 4. 执行安装
 ./install.sh
 ```
 
 安装脚本会自动完成：
-1. 复制项目到 `/opt/node-service-console/`
-2. 安装依赖并构建前端
-3. 注册 systemd 服务并启用开机自启
-4. 立即启动服务
+1. 安装后端依赖
+2. 安装前端依赖并构建
+3. 将 `node-service-console.service` 注册到 systemd
+4. 启用开机自启（`systemctl enable`）
+5. 立即启动服务（`systemctl start`）
 
-常用管理命令：
+安装完成后，浏览器访问：`http://你的服务器IP/node-service-console`
+
+---
+
+### 第二步：日常更新代码
+
+当你在本地修改了代码并 push 到 Git 之后，SSH 登录服务器执行：
 
 ```bash
-# 查看服务状态
+cd /opt/node-service-console
+./update.sh
+```
+
+更新脚本会自动完成：`git pull` → 安装依赖 → 构建前端 → 重启服务。
+
+> **注意**：必须先执行过 `install.sh` 注册 systemd 服务后，`update.sh` 才能正常工作。  
+> 如果报 `Unit node-service-console.service not found`，说明还没执行过 `install.sh`。
+
+---
+
+### 服务管理命令
+
+```bash
+# 查看服务运行状态
 systemctl status node-service-console
 
-# 查看实时日志
+# 查看实时日志输出
 journalctl -u node-service-console -f
 
 # 重启服务
@@ -163,29 +211,84 @@ systemctl restart node-service-console
 # 停止服务
 systemctl stop node-service-console
 
+# 启动服务
+systemctl start node-service-console
+
 # 禁用开机自启
 systemctl disable node-service-console
+
+# 重新启用开机自启
+systemctl enable node-service-console
 ```
 
-卸载：
+---
+
+### 卸载
 
 ```bash
-chmod +x uninstall.sh
+cd /opt/node-service-console
 ./uninstall.sh
 ```
 
-### 方式二：手动启动
+卸载后配置和数据文件会保留，如需彻底清除：
+
+```bash
+rm -rf /etc/node-service-console /var/lib/node-service-console
+```
+
+---
+
+### 端口与访问路径
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| 端口 | `80` | HTTP 默认端口，浏览器无需输入端口号 |
+| 访问路径 | `/node-service-console` | 浏览器输入 `http://IP/node-service-console` 即可访问 |
+| 配置文件 | `/etc/node-service-console/config.json` | 可修改端口等配置，修改后执行 `systemctl restart node-service-console` |
+
+### 本地开发
 
 ```bash
 # 安装依赖
 npm install
-cd web && npm install && npm run build && cd ..
+cd web && npm install && cd ..
 
-# 直接启动
-npm start
+# 终端 1 — 启动后端（默认 80 端口）
+npm run dev
 
-# 或使用 pm2
-pm2 start "npx tsx src/server.ts" --name service-console
+# 终端 2 — 启动前端（Vite 开发服务器，5173 端口，自动代理 API）
+npm run dev:web
 ```
 
-默认端口 `80`，访问路径 `/node-service-console`，可在配置文件中修改端口（Linux: `/etc/node-service-console/config.json`）。
+---
+
+### SSH Key 配置（拉取私有仓库）
+
+使用 SSH Key 认证拉取私有仓库代码，密钥永不过期，无需设置 Token。
+
+**1. 在服务器生成 SSH 密钥**
+
+```bash
+# 一路回车即可（不设密码）
+ssh-keygen -t ed25519 -C "node-service-console"
+
+# 查看公钥
+cat ~/.ssh/id_ed25519.pub
+```
+
+**2. 将公钥添加到 GitHub / GitLab**
+
+- **GitHub**：Settings → SSH and GPG keys → New SSH key → 粘贴公钥
+- **GitLab**：Preferences → SSH Keys → Add new key → 粘贴公钥
+
+**3. 验证连接**
+
+```bash
+ssh -T git@github.com
+# 或
+ssh -T git@gitlab.com
+```
+
+看到 `Hi xxx! You've successfully authenticated` 即表示配置成功。
+
+之后在控制台创建服务时，认证方式选择 **SSH Key** 即可自动通过 SSH 拉取私有仓库代码。
