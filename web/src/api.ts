@@ -96,6 +96,22 @@ export interface OAuthStatus {
   boundAt?: string;
 }
 
+export interface DeviceCodeResponse {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  expiresIn: number;
+  interval: number;
+}
+
+export interface PollResult {
+  status: 'pending' | 'slow_down' | 'expired' | 'success';
+  username?: string;
+  avatarUrl?: string;
+}
+
 export const fetchOAuthStatus = () => request<OAuthStatus>('/git/oauth/status');
+export const requestDeviceCode = () => request<DeviceCodeResponse>('/git/oauth/device-code', { method: 'POST' });
+export const pollDeviceAuth = (deviceCode: string) =>
+  request<PollResult>('/git/oauth/poll', { method: 'POST', body: JSON.stringify({ deviceCode }) });
 export const unbindOAuth = () => request<{ ok: boolean }>('/git/oauth/unbind', { method: 'POST' });
-export const getOAuthAuthorizeUrl = () => `${BASE}/git/oauth/authorize`;

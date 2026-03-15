@@ -262,9 +262,50 @@ npm run dev:web
 
 ---
 
-### SSH Key 配置（拉取私有仓库）
+### 绑定 GitHub（查看私有仓库）
 
-使用 SSH Key 认证拉取私有仓库代码，密钥永不过期，无需设置 Token。
+绑定 GitHub 账号后，可在控制台中浏览和选择你的所有仓库（包括私有仓库），无需手动填写。
+
+**1. 注册 GitHub App（一次性）**
+
+1. 打开 https://github.com/settings/apps/new
+2. 填写：
+   - **GitHub App name**：`Service Console`（随意取名）
+   - **Homepage URL**：`http://你的服务器IP/node-service-console`
+   - 取消勾选 **Webhook → Active**
+   - **Device Flow**：✅ 勾选 **Enable Device Flow**
+3. 点击 **Create GitHub App**
+4. 记录页面上显示的 **Client ID**
+
+**2. 在服务器配置 Client ID**
+
+```bash
+cat > /etc/node-service-console/config.json << 'EOF'
+{
+  "server": { "port": 80 },
+  "github": {
+    "clientId": "你的Client ID"
+  }
+}
+EOF
+
+systemctl restart node-service-console
+```
+
+**3. 绑定账号**
+
+1. 刷新控制台页面，右上角出现 **「绑定 GitHub」** 按钮
+2. 点击后弹出验证码，同时自动打开 GitHub 验证页面
+3. 在 GitHub 页面输入验证码，点击授权
+4. 控制台自动完成绑定，右上角显示你的 GitHub 头像和用户名
+
+绑定后即可在流水线配置中查看和选择所有仓库及分支。Token **永不过期**。
+
+---
+
+### SSH Key 配置（克隆私有仓库代码）
+
+使用 SSH Key 认证拉取私有仓库代码，密钥永不过期。
 
 **1. 在服务器生成 SSH 密钥**
 
@@ -285,8 +326,6 @@ cat ~/.ssh/id_ed25519.pub
 
 ```bash
 ssh -T git@github.com
-# 或
-ssh -T git@gitlab.com
 ```
 
 看到 `Hi xxx! You've successfully authenticated` 即表示配置成功。

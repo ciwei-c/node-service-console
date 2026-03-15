@@ -1,11 +1,10 @@
 /**
- * Git 远程仓库信息查询 + GitHub OAuth 授权
+ * Git 远程仓库信息查询 + GitHub Device Flow 授权
  */
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { execSync } from 'child_process';
 import { readLocalSettings, readOAuthToken, writeOAuthToken, removeOAuthToken } from '../store';
-import { BASE_PATH } from '../app';
 
 const router = Router();
 
@@ -157,14 +156,14 @@ router.get('/branches', async (req: Request, res: Response) => {
 });
 
 /* ══════════════════════════════════════════
-   GitHub OAuth 授权
+   GitHub Device Flow 授权
    ══════════════════════════════════════════ */
 
 /** 获取 OAuth 绑定状态 */
 router.get('/oauth/status', (_req: Request, res: Response) => {
   const oauth = readOAuthToken();
   const settings = readLocalSettings();
-  const hasConfig = !!(settings.github?.clientId && settings.github?.clientSecret);
+  const hasConfig = !!settings.github?.clientId;
 
   if (oauth) {
     res.json({
@@ -187,36 +186,60 @@ router.get('/oauth/status', (_req: Request, res: Response) => {
   }
 });
 
-/** 发起 GitHub OAuth 授权（重定向到 GitHub） */
-router.get('/oauth/authorize', (_req: Request, res: Response) => {
+/** 步骤 1：请求 Device Code */
+router.post('/oauth/device-code', async (_req: Request, res: Response) => {
   const settings = readLocalSettings();
   const clientId = settings.github?.clientId;
   if (!clientId) {
-    return res.status(400).json({ message: '未配置 GitHub OAuth App，请在配置文件中设置 github.clientId 和 github.clientSecret' });
+    return res.status(400).json({ message: '未配置 GitHub App Client ID，请在配置文件中设置 github.clientId' });
   }
 
-  const scope = 'repo read:user';
-  const redirectUri = `${_req.protocol}://${_req.get('host')}${BASE_PATH}/api/git/oauth/callback`;
-  const url = `https://github.com/login/oauth/authorize?client_id=${clientId}&scope=${encodeURIComponent(scope)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
-  res.redirect(url);
+  try {
+    const response = await fetch('https://github.com/login/device/code', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: clientId,
+        scope: 'repo read:user',
+      }),
+    });
+    const data = await response.json() as any;
+
+    if (!data.device_code) {
+      return res.status(400).json({ message: data.error_description || data.error || '无法获取 Device Code' });
+    }
+
+    res.json({
+      data: {
+        deviceCode: data.device_code,
+        userCode: data.user_code,
+        verificationUri: data.verification_uri,
+        expiresIn: data.expires_in,
+        interval: data.interval || 5,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
-/** GitHub OAuth 回调 */
-router.get('/oauth/callback', async (req: Request, res: Response) => {
-  const code = req.query.code as string;
-  if (!code) {
-    return res.status(400).send('缺少 code 参数');
+/** 步骤 2：轮询检查授权状态 */
+router.post('/oauth/poll', async (req: Request, res: Response) => {
+  const { deviceCode } = req.body;
+  if (!deviceCode) {
+    return res.status(400).json({ message: '缺少 deviceCode' });
   }
 
   const settings = readLocalSettings();
   const clientId = settings.github?.clientId;
-  const clientSecret = settings.github?.clientSecret;
-  if (!clientId || !clientSecret) {
-    return res.status(400).send('未配置 GitHub OAuth App');
+  if (!clientId) {
+    return res.status(400).json({ message: '未配置 GitHub App Client ID' });
   }
 
   try {
-    // 用 code 换 access_token
     const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
       method: 'POST',
       headers: {
@@ -225,38 +248,61 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
       },
       body: JSON.stringify({
         client_id: clientId,
-        client_secret: clientSecret,
-        code,
+        device_code: deviceCode,
+        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
       }),
     });
     const tokenData = await tokenRes.json() as any;
-    if (!tokenData.access_token) {
-      return res.status(400).send(`GitHub 授权失败: ${tokenData.error_description || tokenData.error || '未知错误'}`);
+
+    // 用户尚未完成授权
+    if (tokenData.error === 'authorization_pending') {
+      return res.json({ data: { status: 'pending' } });
+    }
+    // 需要减慢轮询
+    if (tokenData.error === 'slow_down') {
+      return res.json({ data: { status: 'slow_down' } });
+    }
+    // Device Code 已过期
+    if (tokenData.error === 'expired_token') {
+      return res.json({ data: { status: 'expired' } });
+    }
+    // 其他错误
+    if (tokenData.error) {
+      return res.status(400).json({ message: tokenData.error_description || tokenData.error });
     }
 
-    // 获取用户信息
-    const userRes = await fetch('https://api.github.com/user', {
-      headers: {
-        Authorization: `Bearer ${tokenData.access_token}`,
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'node-service-console',
-      },
-    });
-    const userData = await userRes.json() as any;
+    // 成功获取 token
+    if (tokenData.access_token) {
+      // 获取用户信息
+      const userRes = await fetch('https://api.github.com/user', {
+        headers: {
+          Authorization: `Bearer ${tokenData.access_token}`,
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'node-service-console',
+        },
+      });
+      const userData = await userRes.json() as any;
 
-    // 保存 token
-    writeOAuthToken({
-      provider: 'github',
-      accessToken: tokenData.access_token,
-      username: userData.login || 'unknown',
-      avatarUrl: userData.avatar_url || '',
-      boundAt: new Date().toISOString(),
-    });
+      writeOAuthToken({
+        provider: 'github',
+        accessToken: tokenData.access_token,
+        username: userData.login || 'unknown',
+        avatarUrl: userData.avatar_url || '',
+        boundAt: new Date().toISOString(),
+      });
 
-    // 重定向回控制台首页
-    res.redirect(BASE_PATH);
+      return res.json({
+        data: {
+          status: 'success',
+          username: userData.login,
+          avatarUrl: userData.avatar_url,
+        },
+      });
+    }
+
+    res.status(400).json({ message: '未知响应' });
   } catch (err: any) {
-    res.status(500).send(`OAuth 授权失败: ${err.message}`);
+    res.status(500).json({ message: err.message });
   }
 });
 

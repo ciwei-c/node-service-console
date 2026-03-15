@@ -47,7 +47,6 @@ export interface LocalSettings {
   server: { port: number };
   github?: {
     clientId: string;
-    clientSecret: string;
   };
 }
 
