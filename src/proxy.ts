@@ -17,7 +17,7 @@ interface ProxyTarget {
 
 /** 根据请求路径匹配正在运行的服务 */
 function findTarget(pathname: string): ProxyTarget | null {
-  const services = listServices().filter((s) => s.status === 'running' && s.hostPort);
+  const services = listServices().filter((s) => s.status === 'running' && (s.hostPort || s.pipeline?.port));
   for (const svc of services) {
     const prefix = svc.pipeline.accessPath || `/${svc.name}`;
     if (pathname === prefix || pathname.startsWith(prefix + '/')) {
@@ -37,7 +37,7 @@ export function reverseProxy(req: Request, res: Response, next: NextFunction): v
   const target = findTarget(req.path);
   if (!target) { next(); return; }
 
-  const port = target.service.hostPort!;
+  const port = target.service.hostPort || target.service.pipeline.port;
   const qs = req.originalUrl.includes('?')
     ? '?' + req.originalUrl.split('?').slice(1).join('?')
     : '';
@@ -74,7 +74,7 @@ export function setupWsProxy(server: http.Server): void {
     const target = findTarget(pathname);
     if (!target) return; // 不匹配的升级请求不处理
 
-    const port = target.service.hostPort!;
+    const port = target.service.hostPort || target.service.pipeline.port;
     const qs = url.includes('?') ? '?' + url.split('?').slice(1).join('?') : '';
 
     const proxySocket = net.connect(port, '127.0.0.1', () => {
