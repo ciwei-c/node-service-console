@@ -64,13 +64,16 @@ web/                       # React 前端（Vite 构建）
 │   ├── api.ts                 # API 请求封装
 │   └── types.ts               # 前端类型定义
 └── dist/                      # 构建产物（Express 静态服务）
-
-config/
-  local-settings.json      # 本地配置（端口等）
-data/
-  store.json               # 服务数据
-  logs.json                # 操作日志
 ```
+
+### 配置与数据目录
+
+| 平台 | 配置文件 | 数据目录 |
+|------|----------|----------|
+| Linux | `/etc/node-service-console/config.json` | `/var/lib/node-service-console/` |
+| Windows/Mac（开发） | `config/local-settings.json` | `data/` |
+
+数据目录包含 `store.json`（服务数据）和 `logs.json`（操作日志），首次启动自动创建。
 
 ## 主要功能
 
@@ -141,4 +144,4 @@ npm start
 pm2 start "npx tsx src/server.ts" --name service-console
 ```
 
-默认端口 `3000`，可在 `config/local-settings.json` 中修改。
+默认端口 `3000`，可在配置文件中修改（Linux: `/etc/node-service-console/config.json`）。

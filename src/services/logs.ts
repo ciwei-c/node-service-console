@@ -5,8 +5,9 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type { LogAction, OperationLog, LogStore } from '../types';
+import { getDataDir } from '../store';
 
-const logDataPath = path.join(__dirname, '..', '..', 'data', 'logs.json');
+const logDataPath = path.join(getDataDir(), 'logs.json');
 
 function readLogStore(): LogStore {
   if (!fs.existsSync(logDataPath)) {

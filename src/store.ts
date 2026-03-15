@@ -1,14 +1,27 @@
 /**
  * JSON 文件持久化层
+ *
+ * 配置与数据目录规则：
+ *   Linux  — 配置 /etc/node-service-console/config.json
+ *            数据 /var/lib/node-service-console/
+ *   其他   — 回退到项目目录下 config/ 和 data/
  */
 import fs from 'fs';
 import path from 'path';
 import type { Store, LocalSettings } from './types';
 
-const dataDir = path.join(__dirname, '..', 'data');
+const isLinux = process.platform === 'linux';
+
+const configDir = isLinux
+  ? '/etc/node-service-console'
+  : path.join(__dirname, '..', 'config');
+const configPath = path.join(configDir, isLinux ? 'config.json' : 'local-settings.json');
+
+const dataDir = isLinux
+  ? '/var/lib/node-service-console'
+  : path.join(__dirname, '..', 'data');
 const dataPath = path.join(dataDir, 'store.json');
-const configDir = path.join(__dirname, '..', 'config');
-const configPath = path.join(configDir, 'local-settings.json');
+const logsPath = path.join(dataDir, 'logs.json');
 
 const defaultStore: Store = { services: [] };
 const defaultLocalSettings: LocalSettings = { server: { port: 3000 } };
@@ -35,4 +48,10 @@ export function writeStore(store: Store): void {
 export function readLocalSettings(): LocalSettings {
   ensureFiles();
   return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+}
+
+/** 返回数据目录路径（供其他模块使用） */
+export function getDataDir(): string {
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  return dataDir;
 }
