@@ -9,7 +9,7 @@ INSTALL_DIR="/opt/$APP_NAME"
 SERVICE_FILE="/etc/systemd/system/$APP_NAME.service"
 
 if [ "$(id -u)" -ne 0 ]; then
-  echo "错误：请使用 root 用户或 sudo 执行此脚本"
+  echo "错误：请使用 root 用户执行此脚本"
   exit 1
 fi
 

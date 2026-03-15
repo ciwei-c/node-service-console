@@ -139,7 +139,7 @@ web/                       # React 前端（Vite 构建）
 ```bash
 # 上传项目到服务器后
 chmod +x install.sh
-sudo ./install.sh
+./install.sh
 ```
 
 安装脚本会自动完成：
@@ -152,26 +152,26 @@ sudo ./install.sh
 
 ```bash
 # 查看服务状态
-sudo systemctl status node-service-console
+systemctl status node-service-console
 
 # 查看实时日志
-sudo journalctl -u node-service-console -f
+journalctl -u node-service-console -f
 
 # 重启服务
-sudo systemctl restart node-service-console
+systemctl restart node-service-console
 
 # 停止服务
-sudo systemctl stop node-service-console
+systemctl stop node-service-console
 
 # 禁用开机自启
-sudo systemctl disable node-service-console
+systemctl disable node-service-console
 ```
 
 卸载：
 
 ```bash
 chmod +x uninstall.sh
-sudo ./uninstall.sh
+./uninstall.sh
 ```
 
 ### 方式二：手动启动
