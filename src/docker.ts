@@ -83,10 +83,13 @@ export function dockerPublish(service: Service, version: string): DockerOpResult
   }
   logs.push('[clone] OK');
 
-  // 3. docker build
-  const dockerfilePath = path.join(workDir, p.dockerfile || 'Dockerfile');
-  logs.push(`[build] image=${img} dockerfile=${p.dockerfile}`);
-  const buildRes = run(`docker build -t ${img} -f "${dockerfilePath}" "${workDir}"`);
+  // 3. docker build — 以 targetDir 对应的子目录为构建上下文
+  const buildContext = p.targetDir && p.targetDir !== '/'
+    ? path.join(workDir, p.targetDir.replace(/^\/+/, ''))
+    : workDir;
+  const dockerfilePath = path.join(buildContext, p.dockerfile || 'Dockerfile');
+  logs.push(`[build] image=${img} dockerfile=${p.dockerfile} context=${p.targetDir || '/'}`);
+  const buildRes = run(`docker build -t ${img} -f "${dockerfilePath}" "${buildContext}"`);
   if (!buildRes.ok) {
     logs.push(`[build] FAILED: ${buildRes.output}`);
     return { ok: false, logs };
