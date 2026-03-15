@@ -12,10 +12,8 @@ import {
 import {
   fetchServiceByName, publishService, rollbackService, deleteDeployment,
   stopService, startService, updateEnvVars, updatePipeline, deleteService,
-  fetchGitRepos, fetchGitBranches,
 } from '../api';
 import type { Service, Deployment, EnvVar, Pipeline } from '../types';
-import type { GitRepo } from '../api';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -43,25 +41,12 @@ export default function ServiceDetail() {
   /* env vars local state */
   const [envVars, setEnvVars] = useState<EnvVar[]>([]);
 
-  /* git remote state */
-  const [gitOwner, setGitOwner] = useState('');
-  const [repos, setRepos] = useState<GitRepo[]>([]);
-  const [branches, setBranches] = useState<string[]>([]);
-  const [reposLoading, setReposLoading] = useState(false);
-  const [branchesLoading, setBranchesLoading] = useState(false);
-
   const load = useCallback(async () => {
     if (!serviceName) return;
     const data = await fetchServiceByName(decodeURIComponent(serviceName));
     setSvc(data);
     setEnvVars(data.envVars ?? []);
     pipeForm.setFieldsValue(data.pipeline ?? {});
-    // 从 repository (owner/repo) 中提取 owner
-    const repo = data.pipeline?.repository || '';
-    if (repo.includes('/')) {
-      const owner = repo.split('/')[0];
-      setGitOwner(owner);
-    }
   }, [serviceName, pipeForm]);
 
   useEffect(() => { load(); }, [load]);
@@ -154,45 +139,6 @@ export default function ServiceDetail() {
     await updatePipeline(svc.id, vals);
     message.success('流水线配置已保存');
     load();
-  };
-
-  /* ── git remote helpers ── */
-
-  const loadRepos = async (owner: string) => {
-    if (!owner.trim()) { setRepos([]); return; }
-    setReposLoading(true);
-    try {
-      const source = pipeForm.getFieldValue('codeSource') || 'github';
-      const data = await fetchGitRepos(source, owner.trim());
-      setRepos(data);
-    } catch { setRepos([]); }
-    setReposLoading(false);
-  };
-
-  const loadBranches = async (repository: string) => {
-    if (!repository) { setBranches([]); return; }
-    setBranchesLoading(true);
-    try {
-      const source = pipeForm.getFieldValue('codeSource') || 'github';
-      const authMode = pipeForm.getFieldValue('authMode') || 'ssh';
-      const data = await fetchGitBranches(source, repository, authMode);
-      setBranches(data);
-    } catch { setBranches([]); }
-    setBranchesLoading(false);
-  };
-
-  const handleOwnerSearch = (value: string) => {
-    setGitOwner(value);
-    loadRepos(value);
-    // 清空仓库和分支选择
-    pipeForm.setFieldsValue({ repository: '', branch: '' });
-    setBranches([]);
-  };
-
-  const handleRepoChange = (fullName: string) => {
-    pipeForm.setFieldsValue({ repository: fullName, branch: '' });
-    setBranches([]);
-    loadBranches(fullName);
   };
 
   /* ── unique versions for rollback ── */
@@ -334,46 +280,26 @@ export default function ServiceDetail() {
               <Select options={[
                 { value: 'github', label: 'GitHub' },
                 { value: 'gitlab', label: 'GitLab' },
-              ]} onChange={() => {
-                pipeForm.setFieldsValue({ repository: '', branch: '' });
-                setRepos([]);
-                setBranches([]);
-                if (gitOwner) loadRepos(gitOwner);
-              }} />
+              ]} />
             </Form.Item>
-            <Form.Item label="用户名 / 组织">
-              <Input.Search
-                placeholder="输入 GitHub 用户名或组织名"
-                value={gitOwner}
-                onChange={(e) => setGitOwner(e.target.value)}
-                onSearch={handleOwnerSearch}
-                enterButton="查询仓库"
-                loading={reposLoading}
-              />
+            <Form.Item name="authMode" label="克隆认证方式" tooltip="SSH Key：使用服务器 SSH 密钥克隆代码，永不过期。Git Token：使用个人访问令牌通过 HTTPS 克隆。">
+              <Select options={[
+                { value: 'ssh', label: 'SSH Key（推荐）' },
+                { value: 'token', label: 'Git Token' },
+              ]} />
             </Form.Item>
-            <Form.Item name="repository" label="代码仓库" rules={[{ required: true, message: '请选择仓库' }]}>
-              <Select
-                showSearch
-                placeholder={repos.length ? '选择仓库' : '请先查询用户名'}
-                loading={reposLoading}
-                optionFilterProp="label"
-                onChange={handleRepoChange}
-                options={repos.map((r) => ({
-                  value: r.fullName,
-                  label: r.private ? `🔒 ${r.name}` : r.name,
-                }))}
-                notFoundContent={reposLoading ? '加载中...' : '无数据'}
-              />
+            <Form.Item name="repository" label="代码仓库" rules={[{ required: true, message: '请输入仓库地址' }]}>
+              <Input placeholder="owner/repo-name" />
             </Form.Item>
-            <Form.Item name="branch" label="分支" rules={[{ required: true, message: '请选择分支' }]}>
-              <Select
-                showSearch
-                placeholder={branches.length ? '选择分支' : '请先选择仓库'}
-                loading={branchesLoading}
-                optionFilterProp="label"
-                options={branches.map((b) => ({ value: b, label: b }))}
-                notFoundContent={branchesLoading ? '加载中...' : '无数据'}
-              />
+            <Form.Item name="branch" label="分支" rules={[{ required: true, message: '请输入分支名' }]}>
+              <Input placeholder="main" />
+            </Form.Item>
+            <Form.Item noStyle shouldUpdate={(prev, cur) => prev.authMode !== cur.authMode}>
+              {({ getFieldValue }) => getFieldValue('authMode') === 'token' ? (
+                <Form.Item name="gitToken" label="Git Token" tooltip="GitHub / GitLab 个人访问令牌，用于 HTTPS 克隆私有仓库">
+                  <Input.Password placeholder="ghp_xxxx 或 glpat-xxxx" />
+                </Form.Item>
+              ) : null}
             </Form.Item>
             <Form.Item name="targetDir" label="目标目录">
               <Input placeholder="/opt/app" />
@@ -389,12 +315,6 @@ export default function ServiceDetail() {
             </Form.Item>
             <Form.Item name="keepImageCount" label="保留镜像数" tooltip="发布时自动清理旧镜像，只保留最近 N 个版本的镜像">
               <InputNumber placeholder="3" style={{ width: '100%' }} min={1} max={100} />
-            </Form.Item>
-            <Form.Item name="authMode" label="克隆认证方式" tooltip="SSH Key：使用服务器 SSH 密钥克隆代码，永不过期。Token：使用 GitHub OAuth 绑定的 Token 通过 HTTPS 克隆。">
-              <Select options={[
-                { value: 'ssh', label: 'SSH Key（推荐）' },
-                { value: 'token', label: 'OAuth Token（需先绑定 GitHub）' },
-              ]} />
             </Form.Item>
           </div>
           <Form.Item>

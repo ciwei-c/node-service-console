@@ -8,7 +8,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import type { Store, LocalSettings, OAuthToken } from './types';
+import type { Store, LocalSettings } from './types';
 
 const isLinux = process.platform === 'linux';
 
@@ -56,24 +56,4 @@ export function getDataDir(): string {
   return dataDir;
 }
 
-/* ── OAuth Token 存储 ── */
-const oauthPath = path.join(dataDir, 'oauth.json');
 
-export function readOAuthToken(): OAuthToken | null {
-  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-  if (!fs.existsSync(oauthPath)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(oauthPath, 'utf-8'));
-  } catch {
-    return null;
-  }
-}
-
-export function writeOAuthToken(token: OAuthToken): void {
-  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-  fs.writeFileSync(oauthPath, JSON.stringify(token, null, 2), 'utf-8');
-}
-
-export function removeOAuthToken(): void {
-  if (fs.existsSync(oauthPath)) fs.unlinkSync(oauthPath);
-}
