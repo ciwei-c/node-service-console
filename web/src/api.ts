@@ -26,7 +26,21 @@ export const deleteService = (id: string) =>
 
 /* deploy */
 export const publishService = (id: string) =>
-  request(`/services/${id}/publish`, { method: 'POST' });
+  request<{ status: string; version: string }>(`/services/${id}/publish`, { method: 'POST' });
+
+export interface PublishStatus {
+  serviceId: string;
+  serviceName: string;
+  version: string;
+  status: 'publishing' | 'success' | 'failed';
+  logs: string[];
+  startedAt: string;
+  finishedAt?: string;
+}
+
+export const fetchPublishStatus = (id: string) =>
+  request<PublishStatus | null>(`/services/${id}/publish-status`);
+
 export const rollbackService = (id: string, body: { targetVersion: string; operator?: string; note?: string }) =>
   request(`/services/${id}/rollback`, { method: 'POST', body: JSON.stringify(body) });
 export const deleteDeployment = (serviceId: string, depId: string) =>

@@ -5,63 +5,100 @@ import { v4 as uuidv4 } from 'uuid';
 import { readStore, writeStore } from '../store';
 import { dockerPublish, dockerRollback, dockerCleanupImages } from '../docker';
 import { addLog } from './logs';
+import { startPublish, addPublishLog, finishPublish, isPublishing } from './publishTracker';
 import type { Service, Deployment, PublishResult, RollbackResult, ErrorResult } from '../types';
 
-export function publishService(
+/**
+ * 启动发布（fire-and-forget）
+ * 返回版本号后立即返回，实际构建在后台执行。
+ * 前端通过 publish-status API 轮询查看进度。
+ */
+export function publishServiceAsync(
   serviceId: string,
-): PublishResult | ErrorResult | null {
+): { version: string } | ErrorResult | null {
   const store = readStore();
   const target = store.services.find((s) => s.id === serviceId);
   if (!target) return null;
 
-  // 自动生成版本号
+  if (isPublishing(serviceId)) {
+    return { error: 'already-publishing' };
+  }
+
   const publishCount = target.deployments.filter((d) => d.action === 'publish').length;
   const version = `${target.name}-${publishCount + 1}`;
 
-  // Docker 构建 & 启动
-  const execResult = dockerPublish(target, version);
-  if (!execResult.ok) {
-    addLog({
-      action: 'publish',
-      serviceName: target.name,
-      success: false,
-      version,
-      detail: `发布失败: ${execResult.logs.join(' | ')}`,
-    });
-    return { error: 'docker-failed', logs: execResult.logs };
-  }
+  // 启动追踪器
+  startPublish(serviceId, target.name, version);
 
-  const now = new Date().toISOString();
-  const record: Deployment = {
-    id: uuidv4(),
-    action: 'publish',
-    version,
-    note: '',
-    publishedAt: now,
-    operator: 'system',
-  };
-  target.deployments.unshift(record);
-  target.currentVersion = version;
-  target.status = 'running';
-  target.updatedAt = now;
-  writeStore(store);
+  // 后台执行，不阻塞请求
+  (async () => {
+    try {
+      const execResult = await dockerPublish(target, version, (line) => {
+        addPublishLog(serviceId, line);
+      });
 
-  // 自动清理旧镜像
-  const keepCount = target.pipeline?.keepImageCount ?? 3;
-  const publishVersions = target.deployments
-    .filter((d) => d.action === 'publish')
-    .map((d) => d.version);
-  const cleanup = dockerCleanupImages(target.name, publishVersions, keepCount);
+      if (!execResult.ok) {
+        finishPublish(serviceId, false);
+        addLog({
+          action: 'publish',
+          serviceName: target.name,
+          success: false,
+          version,
+          detail: `发布失败: ${execResult.logs.join(' | ')}`,
+        });
+        return;
+      }
 
-  addLog({
-    action: 'publish',
-    serviceName: target.name,
-    success: true,
-    version,
-    detail: `发布成功，版本 ${version}，清理 ${cleanup.removed.length} 个旧镜像`,
-  });
+      // 成功：更新 store
+      const freshStore = readStore();
+      const freshTarget = freshStore.services.find((s) => s.id === serviceId);
+      if (freshTarget) {
+        const now = new Date().toISOString();
+        const record: Deployment = {
+          id: uuidv4(),
+          action: 'publish',
+          version,
+          note: '',
+          publishedAt: now,
+          operator: 'system',
+        };
+        freshTarget.deployments.unshift(record);
+        freshTarget.currentVersion = version;
+        freshTarget.status = 'running';
+        freshTarget.updatedAt = now;
+        writeStore(freshStore);
 
-  return { service: target, record, logs: execResult.logs, cleanup };
+        const keepCount = freshTarget.pipeline?.keepImageCount ?? 3;
+        const publishVersions = freshTarget.deployments
+          .filter((d) => d.action === 'publish')
+          .map((d) => d.version);
+        const cleanup = dockerCleanupImages(freshTarget.name, publishVersions, keepCount);
+
+        addPublishLog(serviceId, `[完成] 发布成功，版本 ${version}，清理 ${cleanup.removed.length} 个旧镜像`);
+        addLog({
+          action: 'publish',
+          serviceName: freshTarget.name,
+          success: true,
+          version,
+          detail: `发布成功，版本 ${version}，清理 ${cleanup.removed.length} 个旧镜像`,
+        });
+      }
+
+      finishPublish(serviceId, true);
+    } catch (err: any) {
+      addPublishLog(serviceId, `[异常] ${err.message}`);
+      finishPublish(serviceId, false);
+      addLog({
+        action: 'publish',
+        serviceName: target.name,
+        success: false,
+        version,
+        detail: `发布异常: ${err.message}`,
+      });
+    }
+  })();
+
+  return { version };
 }
 
 export function rollbackService(

@@ -5,8 +5,9 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import {
   listServices, createService, getServiceById, getServiceByName, deleteService,
-  publishService, rollbackService, deleteDeployment,
+  publishServiceAsync, rollbackService, deleteDeployment,
   stopService, startService, updateServiceEnvVars, updateServicePipeline,
+  getPublishStatus, isPublishing,
 } from '../services';
 import { maskService, maskServices } from '../helpers';
 import type { ErrorResult } from '../types';
@@ -50,11 +51,20 @@ router.delete('/:id', (req: Request<{ id: string }>, res: Response) => {
 /* ── 发布 / 回退 ── */
 
 router.post('/:id/publish', (req: Request<{ id: string }>, res: Response) => {
-  const result = publishService(req.params.id);
+  const result = publishServiceAsync(req.params.id);
   if (!result) return res.status(404).json({ message: '服务不存在' });
-  if ('error' in result && result.error === 'docker-failed')
-    return res.status(500).json({ message: 'Docker 执行失败', logs: (result as ErrorResult).logs });
-  return res.json({ data: result });
+  if ('error' in result) {
+    if (result.error === 'already-publishing')
+      return res.status(409).json({ message: '该服务正在发布中，请等待完成' });
+    return res.status(500).json({ message: result.error });
+  }
+  return res.json({ data: { status: 'publishing', version: result.version } });
+});
+
+router.get('/:id/publish-status', (req: Request<{ id: string }>, res: Response) => {
+  const status = getPublishStatus(req.params.id);
+  if (!status) return res.json({ data: null });
+  return res.json({ data: status });
 });
 
 router.post('/:id/rollback', (req: Request<{ id: string }>, res: Response) => {
@@ -73,6 +83,13 @@ router.post('/:id/rollback', (req: Request<{ id: string }>, res: Response) => {
 });
 
 router.delete('/:id/deployments/:did', (req: Request<{ id: string; did: string }>, res: Response) => {
+  // 不允许删除当前运行中的版本
+  const svc = getServiceById(req.params.id);
+  if (!svc) return res.status(404).json({ message: '服务不存在' });
+  const dep = svc.deployments.find((d) => d.id === req.params.did);
+  if (dep && dep.version === svc.currentVersion) {
+    return res.status(400).json({ message: '不能删除当前运行中的版本记录' });
+  }
   const result = deleteDeployment(req.params.id, req.params.did);
   if (!result) return res.status(404).json({ message: '服务不存在' });
   if ('error' in result && result.error === 'deployment-not-found')

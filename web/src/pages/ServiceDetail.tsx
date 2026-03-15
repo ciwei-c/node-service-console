@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Typography, Button, Tag, Tabs, Table, Space, Modal, Form, Input, Select,
@@ -8,12 +8,15 @@ import {
   ArrowLeftOutlined, RocketOutlined, RollbackOutlined,
   PlusOutlined, DeleteOutlined, PlayCircleOutlined,
   PauseCircleOutlined, EyeOutlined, SaveOutlined,
+  LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined,
 } from '@ant-design/icons';
 import {
   fetchServiceByName, publishService, rollbackService, deleteDeployment,
   stopService, startService, updateEnvVars, updatePipeline, deleteService,
+  fetchPublishStatus,
 } from '../api';
 import type { Service, Deployment, EnvVar, Pipeline } from '../types';
+import type { PublishStatus } from '../api';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -41,6 +44,13 @@ export default function ServiceDetail() {
   /* env vars local state */
   const [envVars, setEnvVars] = useState<EnvVar[]>([]);
 
+  /* publish log modal state */
+  const [publishLogOpen, setPublishLogOpen] = useState(false);
+  const [publishStatus, setPublishStatus] = useState<PublishStatus | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const logEndRef = useRef<HTMLDivElement>(null);
+
   const load = useCallback(async () => {
     if (!serviceName) return;
     const data = await fetchServiceByName(decodeURIComponent(serviceName));
@@ -57,27 +67,61 @@ export default function ServiceDetail() {
 
   /* ── deploy actions ── */
 
+  const stopPollPublish = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  // 清理定时器
+  useEffect(() => () => stopPollPublish(), [stopPollPublish]);
+
+  const startPollPublish = useCallback(() => {
+    if (!svc) return;
+    pollTimerRef.current = setInterval(async () => {
+      try {
+        const status = await fetchPublishStatus(svc.id);
+        if (status) {
+          setPublishStatus(status);
+          // 自动滚动到底部
+          setTimeout(() => logEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+          if (status.status !== 'publishing') {
+            stopPollPublish();
+            setPublishing(false);
+            if (status.status === 'success') {
+              message.success('发布成功');
+            } else {
+              message.error('发布失败');
+            }
+            load();
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }, 1500);
+  }, [svc, stopPollPublish, load]);
+
   const handlePublish = async () => {
     try {
+      setPublishing(true);
+      setPublishStatus(null);
+      setPublishLogOpen(true);
       await publishService(svc.id);
-      message.success('发布成功');
+      // 开始轮询日志
+      startPollPublish();
     } catch (err: any) {
-      Modal.error({
-        title: '发布失败',
-        content: (
-          <div>
-            <p>{err.message}</p>
-            <Alert type="error" message="执行日志" description={
-              <pre style={{ maxHeight: 300, overflow: 'auto', fontSize: 12 }}>
-                {err.logs?.join('\n') || '无日志'}
-              </pre>
-            } />
-          </div>
-        ),
-        width: 600,
-      });
+      setPublishing(false);
+      if (err.message?.includes('正在发布中')) {
+        // 已经在发布，打开日志继续轮询
+        setPublishing(true);
+        startPollPublish();
+      } else {
+        message.error(err.message || '发布失败');
+        setPublishLogOpen(false);
+      }
     }
-    load();
   };
 
   const handleRollback = async () => {
@@ -161,21 +205,28 @@ export default function ServiceDetail() {
     },
     {
       title: '操作', width: 140,
-      render: (_: unknown, rec: Deployment) => (
-        <Space>
-          <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => { setSelectedDep(rec); setDetailOpen(true); }}
-          >
-            详情
-          </Button>
-          <Popconfirm title="确定删除该记录？" onConfirm={() => handleDeleteDep(rec.id)}>
-            <Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button>
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_: unknown, rec: Deployment) => {
+        const isCurrentVersion = rec.version === svc.currentVersion;
+        return (
+          <Space>
+            <Button
+              type="link"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => { setSelectedDep(rec); setDetailOpen(true); }}
+            >
+              详情
+            </Button>
+            {isCurrentVersion ? (
+              <Button type="link" size="small" disabled>当前版本</Button>
+            ) : (
+              <Popconfirm title="确定删除该记录？" onConfirm={() => handleDeleteDep(rec.id)}>
+                <Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button>
+              </Popconfirm>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -193,7 +244,7 @@ export default function ServiceDetail() {
           okText="确认发布"
           cancelText="取消"
         >
-          <Button type="primary" icon={<RocketOutlined />}>发布</Button>
+          <Button type="primary" icon={<RocketOutlined />} loading={publishing}>发布</Button>
         </Popconfirm>
         <Button icon={<RollbackOutlined />} onClick={() => setRbOpen(true)}>
           回退
@@ -412,6 +463,67 @@ export default function ServiceDetail() {
             </Descriptions.Item>
           </Descriptions>
         )}
+      </Modal>
+
+      {/* ── 发布日志弹窗 ── */}
+      <Modal
+        title={
+          <Space>
+            <span>发布日志</span>
+            {publishStatus?.status === 'publishing' && <Tag icon={<LoadingOutlined />} color="processing">构建中</Tag>}
+            {publishStatus?.status === 'success' && <Tag icon={<CheckCircleOutlined />} color="success">发布成功</Tag>}
+            {publishStatus?.status === 'failed' && <Tag icon={<CloseCircleOutlined />} color="error">发布失败</Tag>}
+          </Space>
+        }
+        open={publishLogOpen}
+        onCancel={() => {
+          if (!publishing) {
+            setPublishLogOpen(false);
+          }
+        }}
+        footer={
+          <Button
+            onClick={() => setPublishLogOpen(false)}
+            disabled={publishing}
+          >
+            {publishing ? '构建中...' : '关闭'}
+          </Button>
+        }
+        width={720}
+        maskClosable={!publishing}
+      >
+        <div style={{
+          background: '#1e1e1e',
+          color: '#d4d4d4',
+          fontFamily: "'Cascadia Code', 'Fira Code', Consolas, monospace",
+          fontSize: 13,
+          lineHeight: 1.6,
+          padding: '16px',
+          borderRadius: 6,
+          maxHeight: 400,
+          overflow: 'auto',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-all',
+        }}>
+          {publishStatus?.logs.length ? publishStatus.logs.map((line, i) => (
+            <div key={i} style={{
+              color: line.includes('FAILED') || line.includes('异常')
+                ? '#f48771'
+                : line.includes('OK') || line.includes('完成') || line.includes('成功')
+                  ? '#89d185'
+                  : line.startsWith('[')
+                    ? '#569cd6'
+                    : '#d4d4d4',
+            }}>
+              {line}
+            </div>
+          )) : (
+            <div style={{ color: '#808080' }}>
+              {publishing ? '⏳ 正在启动构建...' : '暂无日志'}
+            </div>
+          )}
+          <div ref={logEndRef} />
+        </div>
       </Modal>
     </div>
   );

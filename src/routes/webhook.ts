@@ -3,7 +3,7 @@
  */
 import { Router } from 'express';
 import type { Request, Response } from 'express';
-import { listServices, publishService } from '../services';
+import { listServices, publishServiceAsync } from '../services';
 import { addLog } from '../services/logs';
 
 const router = Router();
@@ -38,16 +38,16 @@ router.post('/', (req: Request, res: Response) => {
   }
 
   const results = matched.map((svc) => {
-    const result = publishService(svc.id);
-    const success = !result || !('error' in result);
-    const ver = result && 'record' in result ? result.record.version : undefined;
+    const result = publishServiceAsync(svc.id);
+    const success = result !== null && !('error' in result);
+    const ver = result && !('error' in result) ? result.version : undefined;
 
     addLog({
       action: 'webhook',
       serviceName: svc.name,
       success,
       version: ver,
-      detail: `Webhook 触发发布 [${repoFullName}@${branch}]${success ? ` → ${ver}` : ' → 失败'}`,
+      detail: `Webhook 触发发布 [${repoFullName}@${branch}]${success ? ` → ${ver}（构建中）` : ' → 失败'}`,
     });
 
     return {

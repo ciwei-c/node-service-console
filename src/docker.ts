@@ -1,12 +1,32 @@
 /**
  * Docker 执行器 — 封装所有 Docker / Shell 操作
  */
-import { execSync } from 'child_process';
+import { execSync, exec } from 'child_process';
+import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
 import type { Service, ExecResult, DockerOpResult, CleanupResult, ContainerInfo } from './types';
 
-/* ── Shell 执行 ── */
+const execAsync = promisify(exec);
+
+/* ── 异步 Shell 执行（用于耗时操作，不阻塞事件循环） ── */
+
+async function runAsync(cmd: string, opts: Record<string, unknown> = {}): Promise<ExecResult> {
+  try {
+    const { stdout, stderr } = await execAsync(cmd, {
+      encoding: 'utf-8',
+      timeout: 300_000,
+      maxBuffer: 50 * 1024 * 1024,
+      ...opts,
+    });
+    return { ok: true, output: (stdout || '').trim() };
+  } catch (err: any) {
+    const msg: string = err.stderr || err.stdout || err.message;
+    return { ok: false, output: msg };
+  }
+}
+
+/* ── 同步 Shell 执行（用于轻量级操作） ── */
 
 function run(cmd: string, opts: Record<string, unknown> = {}): ExecResult {
   try {
@@ -34,8 +54,9 @@ function imageName(serviceName: string, version: string): string {
 
 /* ── 发布 ── */
 
-export function dockerPublish(service: Service, version: string): DockerOpResult {
+export async function dockerPublish(service: Service, version: string, onLog?: (line: string) => void): Promise<DockerOpResult> {
   const logs: string[] = [];
+  const log = (line: string) => { logs.push(line); onLog?.(line); };
   const p = service.pipeline;
   const cn = containerName(service.name);
   const img = imageName(service.name, version);
@@ -48,22 +69,19 @@ export function dockerPublish(service: Service, version: string): DockerOpResult
   // 2. 拉取代码
   const authMode = p.authMode || 'ssh';
   const token = p.gitToken || '';
-  // 从 repository 中提取 owner/repo（兼容完整 URL 和 owner/repo 两种格式）
   const repo = p.repository
-    .replace(/^https?:\/\/[^/]+\//, '')  // 去掉 https://github.com/
-    .replace(/^git@[^:]+:/, '')          // 去掉 git@github.com:
-    .replace(/\.git$/, '');              // 去掉 .git 后缀
+    .replace(/^https?:\/\/[^/]+\//, '')
+    .replace(/^git@[^:]+:/, '')
+    .replace(/\.git$/, '');
   let repoUrl: string;
 
   if (authMode === 'ssh') {
-    // SSH 方式：使用服务器 SSH Key 认证，无需 Token
     if (p.codeSource === 'github') {
       repoUrl = `git@github.com:${repo}.git`;
     } else {
       repoUrl = `git@gitlab.com:${repo}.git`;
     }
   } else {
-    // Token 方式：通过 HTTPS + Token 认证
     if (p.codeSource === 'github') {
       repoUrl = token
         ? `https://${token}@github.com/${repo}.git`
@@ -75,31 +93,31 @@ export function dockerPublish(service: Service, version: string): DockerOpResult
     }
   }
   const safeUrl = repoUrl.replace(/\/\/[^@]+@/, '//***@');
-  logs.push(`[clone] ${safeUrl} branch=${p.branch}`);
-  const cloneRes = run(`git clone --depth 1 --branch ${p.branch} ${repoUrl} "${workDir}"`);
+  log(`[clone] ${safeUrl} branch=${p.branch}`);
+  const cloneRes = await runAsync(`git clone --depth 1 --branch ${p.branch} ${repoUrl} "${workDir}"`);
   if (!cloneRes.ok) {
-    logs.push(`[clone] FAILED: ${cloneRes.output}`);
+    log(`[clone] FAILED: ${cloneRes.output}`);
     return { ok: false, logs };
   }
-  logs.push('[clone] OK');
+  log('[clone] OK');
 
-  // 3. docker build — 以 targetDir 对应的子目录为构建上下文
+  // 3. docker build
   const buildContext = p.targetDir && p.targetDir !== '/'
     ? path.join(workDir, p.targetDir.replace(/^\/+/, ''))
     : workDir;
   const dockerfilePath = path.join(buildContext, p.dockerfile || 'Dockerfile');
-  logs.push(`[build] image=${img} dockerfile=${p.dockerfile} context=${p.targetDir || '/'}`);
-  const buildRes = run(`docker build -t ${img} -f "${dockerfilePath}" "${buildContext}"`);
+  log(`[build] image=${img} dockerfile=${p.dockerfile} context=${p.targetDir || '/'}`);
+  const buildRes = await runAsync(`docker build -t ${img} -f "${dockerfilePath}" "${buildContext}"`);
   if (!buildRes.ok) {
-    logs.push(`[build] FAILED: ${buildRes.output}`);
+    log(`[build] FAILED: ${buildRes.output}`);
     return { ok: false, logs };
   }
-  logs.push('[build] OK');
+  log('[build] OK');
 
   // 4. 停止并移除旧容器
-  run(`docker stop ${cn}`);
-  run(`docker rm -f ${cn}`);
-  logs.push('[stop-old] done');
+  await runAsync(`docker stop ${cn}`);
+  await runAsync(`docker rm -f ${cn}`);
+  log('[stop-old] done');
 
   // 5. 组装环境变量
   const envArgs = (service.envVars || [])
@@ -117,13 +135,13 @@ export function dockerPublish(service: Service, version: string): DockerOpResult
     img,
   ].filter(Boolean).join(' ');
 
-  logs.push(`[run] ${runCmd}`);
-  const runRes = run(runCmd);
+  log(`[run] ${runCmd}`);
+  const runRes = await runAsync(runCmd);
   if (!runRes.ok) {
-    logs.push(`[run] FAILED: ${runRes.output}`);
+    log(`[run] FAILED: ${runRes.output}`);
     return { ok: false, logs };
   }
-  logs.push(`[run] container=${cn} started`);
+  log(`[run] container=${cn} started`);
 
   // 7. 清理 tmp
   fs.rmSync(workDir, { recursive: true, force: true });
