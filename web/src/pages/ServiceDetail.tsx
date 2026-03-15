@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Typography, Button, Tag, Tabs, Table, Space, Modal, Form, Input, Select,
-  InputNumber, message, Popconfirm, Descriptions, Card, Alert, Switch,
+  InputNumber, message, Popconfirm, Descriptions, Card, Alert, Switch, Drawer,
 } from 'antd';
 import {
   ArrowLeftOutlined, RocketOutlined, RollbackOutlined,
@@ -557,8 +557,8 @@ export default function ServiceDetail() {
         )}
       </Modal>
 
-      {/* ── 发布日志弹窗 ── */}
-      <Modal
+      {/* ── 发布日志面板 ── */}
+      <Drawer
         title={
           <Space>
             <span>发布日志</span>
@@ -567,22 +567,11 @@ export default function ServiceDetail() {
             {publishStatus?.status === 'failed' && <Tag icon={<CloseCircleOutlined />} color="error">发布失败</Tag>}
           </Space>
         }
+        placement="right"
+        width={600}
         open={publishLogOpen}
-        onCancel={() => {
-          if (!publishing) {
-            setPublishLogOpen(false);
-          }
-        }}
-        footer={
-          <Button
-            onClick={() => setPublishLogOpen(false)}
-            disabled={publishing}
-          >
-            {publishing ? '构建中...' : '关闭'}
-          </Button>
-        }
-        width={720}
-        maskClosable={!publishing}
+        onClose={() => setPublishLogOpen(false)}
+        styles={{ body: { padding: 0 } }}
       >
         <div style={{
           background: '#1e1e1e',
@@ -591,9 +580,7 @@ export default function ServiceDetail() {
           fontSize: 13,
           lineHeight: 1.6,
           padding: '16px',
-          borderRadius: 6,
-          maxHeight: 400,
-          overflow: 'auto',
+          minHeight: '100%',
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-all',
         }}>
@@ -616,7 +603,7 @@ export default function ServiceDetail() {
           )}
           <div ref={logEndRef} />
         </div>
-      </Modal>
+      </Drawer>
     </div>
   );
 }

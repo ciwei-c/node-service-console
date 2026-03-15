@@ -136,7 +136,28 @@ export default function ContainerList() {
     },
   ];
 
+  /* 从 inspect 中提取宿主机端口映射，生成访问地址 */
+  const getAccessAddresses = (): string[] => {
+    if (!inspectData) return [];
+    const networkSettings = inspectData.NetworkSettings as Record<string, unknown> | undefined;
+    const portsObj = networkSettings?.Ports as Record<string, Array<{HostIp: string; HostPort: string}>> | undefined;
+    if (!portsObj) return [];
+    const host = window.location.hostname;
+    const addrs: string[] = [];
+    for (const [containerPort, bindings] of Object.entries(portsObj)) {
+      if (!bindings) continue;
+      for (const b of bindings) {
+        const hp = b.HostPort;
+        if (hp) {
+          addrs.push(`${host}:${hp} → ${containerPort}`);
+        }
+      }
+    }
+    return addrs;
+  };
+
   const summary = getInspectSummary();
+  const accessAddrs = getAccessAddresses();
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto', padding: '32px 24px' }}>
@@ -209,6 +230,23 @@ export default function ContainerList() {
                     </Descriptions.Item>
                     <Descriptions.Item label="工作目录">{summary.workDir}</Descriptions.Item>
                     <Descriptions.Item label="暴露端口">{summary.exposedPorts}</Descriptions.Item>
+                    {accessAddrs.length > 0 && (
+                      <Descriptions.Item label="服务访问地址" span={2}>
+                        {accessAddrs.map((addr, i) => {
+                          const hostPort = addr.split(' ')[0];
+                          return (
+                            <div key={i} style={{ marginBottom: 4 }}>
+                              <Text code copyable={{ text: `http://${hostPort}` }}>
+                                http://{hostPort}
+                              </Text>
+                              <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                                ({addr.split(' → ')[1]})
+                              </Text>
+                            </div>
+                          );
+                        })}
+                      </Descriptions.Item>
+                    )}
                     <Descriptions.Item label="IP 地址">{summary.ipAddress}</Descriptions.Item>
                     <Descriptions.Item label="内存限制">
                       {summary.memory ? `${(summary.memory / 1024 / 1024).toFixed(0)} MB` : '无限制'}
