@@ -5,6 +5,7 @@ import { execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import type { Service, ExecResult, DockerOpResult, CleanupResult, ContainerInfo } from './types';
+import { readOAuthToken } from './store';
 
 /* ── Shell 执行 ── */
 
@@ -47,7 +48,9 @@ export function dockerPublish(service: Service, version: string): DockerOpResult
 
   // 2. 拉取代码
   const authMode = p.authMode || 'ssh';
-  const token = p.gitToken || '';
+  // token 优先从 OAuth 获取，降级到 pipeline 中的 gitToken
+  const oauth = readOAuthToken();
+  const token = oauth?.accessToken || p.gitToken || '';
   let repoUrl: string;
 
   if (authMode === 'ssh') {

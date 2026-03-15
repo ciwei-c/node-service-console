@@ -85,3 +85,17 @@ export const fetchGitBranches = (source: string, repository: string, authMode: s
   if (token) params.set('token', token);
   return request<string[]>(`/git/branches?${params.toString()}`);
 };
+
+/* git OAuth */
+export interface OAuthStatus {
+  bound: boolean;
+  configured: boolean;
+  provider?: string;
+  username?: string;
+  avatarUrl?: string;
+  boundAt?: string;
+}
+
+export const fetchOAuthStatus = () => request<OAuthStatus>('/git/oauth/status');
+export const unbindOAuth = () => request<{ ok: boolean }>('/git/oauth/unbind', { method: 'POST' });
+export const getOAuthAuthorizeUrl = () => `${BASE}/git/oauth/authorize`;

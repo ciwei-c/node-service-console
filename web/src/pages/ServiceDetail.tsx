@@ -163,9 +163,7 @@ export default function ServiceDetail() {
     setReposLoading(true);
     try {
       const source = pipeForm.getFieldValue('codeSource') || 'github';
-      const authMode = pipeForm.getFieldValue('authMode') || 'ssh';
-      const token = authMode === 'token' ? pipeForm.getFieldValue('gitToken') : undefined;
-      const data = await fetchGitRepos(source, owner.trim(), token);
+      const data = await fetchGitRepos(source, owner.trim());
       setRepos(data);
     } catch { setRepos([]); }
     setReposLoading(false);
@@ -177,8 +175,7 @@ export default function ServiceDetail() {
     try {
       const source = pipeForm.getFieldValue('codeSource') || 'github';
       const authMode = pipeForm.getFieldValue('authMode') || 'ssh';
-      const token = authMode === 'token' ? pipeForm.getFieldValue('gitToken') : undefined;
-      const data = await fetchGitBranches(source, repository, authMode, token);
+      const data = await fetchGitBranches(source, repository, authMode);
       setBranches(data);
     } catch { setBranches([]); }
     setBranchesLoading(false);
@@ -393,24 +390,11 @@ export default function ServiceDetail() {
             <Form.Item name="keepImageCount" label="保留镜像数" tooltip="发布时自动清理旧镜像，只保留最近 N 个版本的镜像">
               <InputNumber placeholder="3" style={{ width: '100%' }} min={1} max={100} />
             </Form.Item>
-            <Form.Item name="authMode" label="认证方式" tooltip="SSH Key：在服务器生成密钥添加到 GitHub/GitLab，永不过期。Token：使用 PAT 认证，有有效期。">
+            <Form.Item name="authMode" label="克隆认证方式" tooltip="SSH Key：使用服务器 SSH 密钥克隆代码，永不过期。Token：使用 GitHub OAuth 绑定的 Token 通过 HTTPS 克隆。">
               <Select options={[
-                { value: 'ssh', label: 'SSH Key（推荐，永不过期）' },
-                { value: 'token', label: 'Git Token' },
+                { value: 'ssh', label: 'SSH Key（推荐）' },
+                { value: 'token', label: 'OAuth Token（需先绑定 GitHub）' },
               ]} />
-            </Form.Item>
-            <Form.Item noStyle shouldUpdate={(prev, cur) => prev.authMode !== cur.authMode}>
-              {({ getFieldValue }) =>
-                getFieldValue('authMode') === 'token' ? (
-                  <Form.Item name="gitToken" label="Git Token" tooltip="GitHub PAT 或 GitLab Access Token，用于拉取私有仓库代码。">
-                    <Input.Password placeholder="ghp_xxxx 或 glpat-xxxx" />
-                  </Form.Item>
-                ) : (
-                  <Form.Item label="SSH 状态">
-                    <Input disabled value="使用服务器 SSH Key 认证（需先在服务器配置）" />
-                  </Form.Item>
-                )
-              }
             </Form.Item>
           </div>
           <Form.Item>

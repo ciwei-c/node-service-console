@@ -45,6 +45,18 @@ export interface Store {
 
 export interface LocalSettings {
   server: { port: number };
+  github?: {
+    clientId: string;
+    clientSecret: string;
+  };
+}
+
+export interface OAuthToken {
+  provider: 'github' | 'gitlab';
+  accessToken: string;
+  username: string;
+  avatarUrl: string;
+  boundAt: string;
 }
 
 export interface ExecResult {
