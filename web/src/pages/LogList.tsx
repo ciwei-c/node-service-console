@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  Typography, Table, Tag, Space, Select, Input, DatePicker, Button, Card, message,
+  Typography, Table, Tag, Space, Select, Input, DatePicker, Button, Card, Modal, Descriptions, message,
 } from 'antd';
 import {
   SearchOutlined, ReloadOutlined, FileTextOutlined,
-  CheckCircleOutlined, CloseCircleOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, EyeOutlined,
 } from '@ant-design/icons';
 import { fetchLogs, fetchLogServiceNames } from '../api';
 import type { OperationLog, LogAction } from '../types';
@@ -44,6 +44,7 @@ export default function LogList() {
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [detailLog, setDetailLog] = useState<OperationLog | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,6 +111,12 @@ export default function LogList() {
     },
     {
       title: '详情', dataIndex: 'detail', ellipsis: true,
+      render: (v: string, rec: OperationLog) => (
+        <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => setDetailLog(rec)}
+          style={{ padding: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {v || '-'}
+        </Button>
+      ),
     },
     {
       title: '操作人', dataIndex: 'operator', width: 90,
@@ -198,6 +205,45 @@ export default function LogList() {
           onChange: (p, ps) => { setPage(p); setPageSize(ps); },
         }}
       />
+
+      {/* 日志详情弹窗 */}
+      <Modal
+        title="日志详情"
+        open={!!detailLog}
+        onCancel={() => setDetailLog(null)}
+        footer={<Button onClick={() => setDetailLog(null)}>关闭</Button>}
+        width={640}
+      >
+        {detailLog && (
+          <Descriptions column={1} bordered size="small" style={{ marginTop: 12 }}>
+            <Descriptions.Item label="时间">
+              {dayjs(detailLog.timestamp).format('YYYY-MM-DD HH:mm:ss')}
+            </Descriptions.Item>
+            <Descriptions.Item label="操作类型">
+              <Tag color={actionLabelMap[detailLog.action]?.color}>
+                {actionLabelMap[detailLog.action]?.label ?? detailLog.action}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="服务">{detailLog.serviceName}</Descriptions.Item>
+            <Descriptions.Item label="结果">
+              {detailLog.success
+                ? <Tag color="success">成功</Tag>
+                : <Tag color="error">失败</Tag>}
+            </Descriptions.Item>
+            {detailLog.version && (
+              <Descriptions.Item label="版本">
+                <Text code>{detailLog.version}</Text>
+              </Descriptions.Item>
+            )}
+            <Descriptions.Item label="操作人">{detailLog.operator || '-'}</Descriptions.Item>
+            <Descriptions.Item label="详情">
+              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 300, overflow: 'auto' }}>
+                {detailLog.detail || '-'}
+              </div>
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
     </div>
   );
 }

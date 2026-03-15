@@ -48,25 +48,30 @@ export function dockerPublish(service: Service, version: string): DockerOpResult
   // 2. 拉取代码
   const authMode = p.authMode || 'ssh';
   const token = p.gitToken || '';
+  // 从 repository 中提取 owner/repo（兼容完整 URL 和 owner/repo 两种格式）
+  const repo = p.repository
+    .replace(/^https?:\/\/[^/]+\//, '')  // 去掉 https://github.com/
+    .replace(/^git@[^:]+:/, '')          // 去掉 git@github.com:
+    .replace(/\.git$/, '');              // 去掉 .git 后缀
   let repoUrl: string;
 
   if (authMode === 'ssh') {
     // SSH 方式：使用服务器 SSH Key 认证，无需 Token
     if (p.codeSource === 'github') {
-      repoUrl = `git@github.com:${p.repository}.git`;
+      repoUrl = `git@github.com:${repo}.git`;
     } else {
-      repoUrl = `git@gitlab.com:${p.repository}.git`;
+      repoUrl = `git@gitlab.com:${repo}.git`;
     }
   } else {
     // Token 方式：通过 HTTPS + Token 认证
     if (p.codeSource === 'github') {
       repoUrl = token
-        ? `https://${token}@github.com/${p.repository}.git`
-        : `https://github.com/${p.repository}.git`;
+        ? `https://${token}@github.com/${repo}.git`
+        : `https://github.com/${repo}.git`;
     } else {
       repoUrl = token
-        ? `https://oauth2:${token}@gitlab.com/${p.repository}.git`
-        : `https://gitlab.com/${p.repository}.git`;
+        ? `https://oauth2:${token}@gitlab.com/${repo}.git`
+        : `https://gitlab.com/${repo}.git`;
     }
   }
   const safeUrl = repoUrl.replace(/\/\/[^@]+@/, '//***@');
