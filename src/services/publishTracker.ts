@@ -14,6 +14,12 @@ export interface PublishStatus {
   finishedAt?: string;
 }
 
+/** 去除 ANSI 转义码（终端颜色等） */
+function stripAnsi(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/\x1B\[[0-9;]*[A-Za-z]/g, '');
+}
+
 /** serviceId -> PublishStatus */
 const statusMap = new Map<string, PublishStatus>();
 
@@ -30,7 +36,7 @@ export function startPublish(serviceId: string, serviceName: string, version: st
 
 export function addPublishLog(serviceId: string, line: string): void {
   const s = statusMap.get(serviceId);
-  if (s) s.logs.push(line);
+  if (s) s.logs.push(stripAnsi(line));
 }
 
 export function finishPublish(serviceId: string, success: boolean): void {
