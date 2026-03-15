@@ -234,9 +234,8 @@ export function dockerRemoveAll(serviceName: string, allVersions: string[]): voi
 /* ── 容器查询 ── */
 
 export function dockerListContainers(): ContainerInfo[] {
-  const fmt =
-    '{"id":"{{.ID}}","name":"{{.Names}}","image":"{{.Image}}","status":"{{.Status}}","ports":"{{.Ports}}","created":"{{.CreatedAt}}","state":"{{.State}}"}';
-  const res = run(`docker ps -a --format "${fmt}"`);
+  const fmt = `{"id":"{{.ID}}","name":"{{.Names}}","image":"{{.Image}}","status":"{{.Status}}","ports":"{{.Ports}}","created":"{{.CreatedAt}}","state":"{{.State}}"}`;
+  const res = run(`docker ps -a --format '${fmt}'`);
   if (!res.ok || !res.output) return [];
   return res.output
     .split('\n')

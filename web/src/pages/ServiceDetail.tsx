@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Typography, Button, Tag, Tabs, Table, Space, Modal, Form, Input, Select,
-  InputNumber, message, Popconfirm, Descriptions, Card, Alert,
+  InputNumber, message, Popconfirm, Descriptions, Card, Alert, Switch,
 } from 'antd';
 import {
   ArrowLeftOutlined, RocketOutlined, RollbackOutlined,
@@ -43,6 +43,9 @@ export default function ServiceDetail() {
 
   /* env vars local state */
   const [envVars, setEnvVars] = useState<EnvVar[]>([]);
+  const [envJsonMode, setEnvJsonMode] = useState(false);
+  const [envJsonText, setEnvJsonText] = useState('');
+  const [envJsonError, setEnvJsonError] = useState('');
 
   /* publish log modal state */
   const [publishLogOpen, setPublishLogOpen] = useState(false);
@@ -166,8 +169,56 @@ export default function ServiceDetail() {
 
   /* ── env vars ── */
 
+  const switchToJsonMode = () => {
+    const obj: Record<string, string> = {};
+    envVars.filter((v) => v.key.trim()).forEach((v) => { obj[v.key] = v.value; });
+    setEnvJsonText(JSON.stringify(obj, null, 2));
+    setEnvJsonError('');
+    setEnvJsonMode(true);
+  };
+
+  const switchToKvMode = () => {
+    try {
+      const obj = JSON.parse(envJsonText);
+      if (typeof obj !== 'object' || Array.isArray(obj)) {
+        message.error('JSON 必须是对象格式，例如 { "KEY": "VALUE" }');
+        return;
+      }
+      const newVars: EnvVar[] = Object.entries(obj).map(([key, value]) => ({
+        key,
+        value: String(value),
+      }));
+      setEnvVars(newVars);
+      setEnvJsonMode(false);
+    } catch {
+      message.error('JSON 格式错误，请修正后再切换');
+    }
+  };
+
+  const handleEnvModeSwitch = (jsonMode: boolean) => {
+    if (jsonMode) {
+      switchToJsonMode();
+    } else {
+      switchToKvMode();
+    }
+  };
+
   const handleSaveEnv = async () => {
-    const filtered = envVars.filter((v) => v.key.trim());
+    let vars = envVars;
+    if (envJsonMode) {
+      try {
+        const obj = JSON.parse(envJsonText);
+        if (typeof obj !== 'object' || Array.isArray(obj)) {
+          message.error('JSON 必须是对象格式');
+          return;
+        }
+        vars = Object.entries(obj).map(([key, value]) => ({ key, value: String(value) }));
+      } catch {
+        message.error('JSON 格式错误，无法保存');
+        return;
+      }
+    }
+    const filtered = vars.filter((v) => v.key.trim());
     await updateEnvVars(svc.id, filtered);
     message.success('环境变量已保存');
     load();
@@ -274,48 +325,92 @@ export default function ServiceDetail() {
   const settingsTab = (
     <div>
       {/* 环境变量 */}
-      <Card title="基础信息 — 环境变量" size="small" style={{ marginBottom: 20 }}>
-        {envVars.map((v, i) => (
-          <Space key={i} style={{ display: 'flex', marginBottom: 8 }} align="center">
-            <Input
-              placeholder="KEY"
-              value={v.key}
-              style={{ width: 200 }}
-              onChange={(e) => {
-                const next = [...envVars];
-                next[i] = { ...next[i], key: e.target.value };
-                setEnvVars(next);
-              }}
+      <Card
+        title="基础信息 — 环境变量"
+        size="small"
+        style={{ marginBottom: 20 }}
+        extra={
+          <Space>
+            <span style={{ fontSize: 12, color: '#8c8c8c' }}>键值对</span>
+            <Switch
+              checked={envJsonMode}
+              onChange={handleEnvModeSwitch}
+              checkedChildren="JSON"
+              unCheckedChildren="KV"
+              size="small"
             />
-            <Input
-              placeholder="VALUE"
-              value={v.value}
-              style={{ width: 320 }}
-              onChange={(e) => {
-                const next = [...envVars];
-                next[i] = { ...next[i], value: e.target.value };
-                setEnvVars(next);
-              }}
-            />
-            <Button
-              danger
-              type="text"
-              icon={<DeleteOutlined />}
-              onClick={() => setEnvVars(envVars.filter((_, idx) => idx !== i))}
-            />
+            <span style={{ fontSize: 12, color: '#8c8c8c' }}>JSON</span>
           </Space>
-        ))}
-        <Space style={{ marginTop: 8 }}>
-          <Button
-            icon={<PlusOutlined />}
-            onClick={() => setEnvVars([...envVars, { key: '', value: '' }])}
-          >
-            新增变量
-          </Button>
+        }
+      >
+        {envJsonMode ? (
+          <div>
+            <Input.TextArea
+              value={envJsonText}
+              onChange={(e) => {
+                setEnvJsonText(e.target.value);
+                try {
+                  JSON.parse(e.target.value);
+                  setEnvJsonError('');
+                } catch (err: any) {
+                  setEnvJsonError(err.message);
+                }
+              }}
+              rows={10}
+              style={{ fontFamily: "'Cascadia Code', 'Fira Code', Consolas, monospace", fontSize: 13 }}
+              placeholder='{&#10;  "KEY": "VALUE",&#10;  "DB_HOST": "localhost"&#10;}'
+            />
+            {envJsonError && (
+              <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 4 }}>
+                JSON 语法错误：{envJsonError}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            {envVars.map((v, i) => (
+              <Space key={i} style={{ display: 'flex', marginBottom: 8 }} align="center">
+                <Input
+                  placeholder="KEY"
+                  value={v.key}
+                  style={{ width: 200 }}
+                  onChange={(e) => {
+                    const next = [...envVars];
+                    next[i] = { ...next[i], key: e.target.value };
+                    setEnvVars(next);
+                  }}
+                />
+                <Input
+                  placeholder="VALUE"
+                  value={v.value}
+                  style={{ width: 320 }}
+                  onChange={(e) => {
+                    const next = [...envVars];
+                    next[i] = { ...next[i], value: e.target.value };
+                    setEnvVars(next);
+                  }}
+                />
+                <Button
+                  danger
+                  type="text"
+                  icon={<DeleteOutlined />}
+                  onClick={() => setEnvVars(envVars.filter((_, idx) => idx !== i))}
+                />
+              </Space>
+            ))}
+            <Button
+              icon={<PlusOutlined />}
+              onClick={() => setEnvVars([...envVars, { key: '', value: '' }])}
+            >
+              新增变量
+            </Button>
+          </div>
+        )}
+        <div style={{ marginTop: 12 }}>
           <Button type="primary" icon={<SaveOutlined />} onClick={handleSaveEnv}>
             保存环境变量
           </Button>
-        </Space>
+        </div>
       </Card>
 
       {/* 流水线 */}
