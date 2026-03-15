@@ -1,0 +1,26 @@
+{
+  "name": "node-service-console",
+  "version": "1.0.0",
+  "description": "Service management console for Node deployment, rollback, env and CI/CD settings",
+  "main": "src/server.ts",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "dev": "tsx --watch src/server.ts",
+    "build:web": "cd web && npm run build",
+    "dev:web": "cd web && npm run dev",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.5.0",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

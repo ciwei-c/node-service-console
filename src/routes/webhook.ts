@@ -1,0 +1,64 @@
+/**
+ * GitHub / GitLab Webhook 路由
+ */
+import { Router } from 'express';
+import type { Request, Response } from 'express';
+import { listServices, publishService } from '../services';
+import { addLog } from '../services/logs';
+
+const router = Router();
+
+router.post('/', (req: Request, res: Response) => {
+  const payload = req.body;
+
+  let repoFullName = '';
+  let branch = '';
+
+  if (payload.repository?.full_name) {
+    // GitHub push event
+    repoFullName = payload.repository.full_name;
+    branch = (payload.ref || '').replace('refs/heads/', '');
+  } else if (payload.project?.path_with_namespace) {
+    // GitLab push event
+    repoFullName = payload.project.path_with_namespace;
+    branch = (payload.ref || '').replace('refs/heads/', '');
+  }
+
+  if (!repoFullName) {
+    return res.status(400).json({ message: '无法解析仓库信息' });
+  }
+
+  const services = listServices();
+  const matched = services.filter(
+    (s) => s.pipeline?.repository === repoFullName && s.pipeline?.branch === branch,
+  );
+
+  if (matched.length === 0) {
+    return res.json({ message: '没有匹配的服务', repo: repoFullName, branch });
+  }
+
+  const results = matched.map((svc) => {
+    const result = publishService(svc.id);
+    const success = !result || !('error' in result);
+    const ver = result && 'record' in result ? result.record.version : undefined;
+
+    addLog({
+      action: 'webhook',
+      serviceName: svc.name,
+      success,
+      version: ver,
+      detail: `Webhook 触发发布 [${repoFullName}@${branch}]${success ? ` → ${ver}` : ' → 失败'}`,
+    });
+
+    return {
+      service: svc.name,
+      success,
+      version: ver,
+      error: result && 'error' in result ? result.error : undefined,
+    };
+  });
+
+  return res.json({ message: `触发 ${results.length} 个服务发布`, results });
+});
+
+export default router;
