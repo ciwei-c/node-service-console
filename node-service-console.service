@@ -1,6 +1,6 @@
 [Unit]
 Description=Node Service Console - Docker 服务管理平台
-Documentation=https://github.com/your-repo/node-service-console
+Documentation=https://github.com/ciwei-c/node-service-console
 After=network.target docker.service
 Wants=docker.service
 
