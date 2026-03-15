@@ -61,11 +61,7 @@ export default function ServiceDetail() {
 
   useEffect(() => { load(); }, [load]);
 
-  if (!svc) return null;
-
-  const st = statusMap[svc.status] ?? statusMap.idle;
-
-  /* ── deploy actions ── */
+  /* ── hooks that must be before early return ── */
 
   const stopPollPublish = useCallback(() => {
     if (pollTimerRef.current) {
@@ -74,17 +70,14 @@ export default function ServiceDetail() {
     }
   }, []);
 
-  // 清理定时器
   useEffect(() => () => stopPollPublish(), [stopPollPublish]);
 
-  const startPollPublish = useCallback(() => {
-    if (!svc) return;
+  const startPollPublish = useCallback((serviceId: string) => {
     pollTimerRef.current = setInterval(async () => {
       try {
-        const status = await fetchPublishStatus(svc.id);
+        const status = await fetchPublishStatus(serviceId);
         if (status) {
           setPublishStatus(status);
-          // 自动滚动到底部
           setTimeout(() => logEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
           if (status.status !== 'publishing') {
             stopPollPublish();
@@ -101,7 +94,13 @@ export default function ServiceDetail() {
         // ignore
       }
     }, 1500);
-  }, [svc, stopPollPublish, load]);
+  }, [stopPollPublish, load]);
+
+  if (!svc) return null;
+
+  const st = statusMap[svc.status] ?? statusMap.idle;
+
+  /* ── deploy actions ── */
 
   const handlePublish = async () => {
     try {
@@ -109,14 +108,12 @@ export default function ServiceDetail() {
       setPublishStatus(null);
       setPublishLogOpen(true);
       await publishService(svc.id);
-      // 开始轮询日志
-      startPollPublish();
+      startPollPublish(svc.id);
     } catch (err: any) {
       setPublishing(false);
       if (err.message?.includes('正在发布中')) {
-        // 已经在发布，打开日志继续轮询
         setPublishing(true);
-        startPollPublish();
+        startPollPublish(svc.id);
       } else {
         message.error(err.message || '发布失败');
         setPublishLogOpen(false);
