@@ -12,8 +12,10 @@ import {
 import {
   fetchServiceByName, publishService, rollbackService, deleteDeployment,
   stopService, startService, updateEnvVars, updatePipeline, deleteService,
+  fetchGitRepos, fetchGitBranches,
 } from '../api';
 import type { Service, Deployment, EnvVar, Pipeline } from '../types';
+import type { GitRepo } from '../api';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -41,12 +43,25 @@ export default function ServiceDetail() {
   /* env vars local state */
   const [envVars, setEnvVars] = useState<EnvVar[]>([]);
 
+  /* git remote state */
+  const [gitOwner, setGitOwner] = useState('');
+  const [repos, setRepos] = useState<GitRepo[]>([]);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [reposLoading, setReposLoading] = useState(false);
+  const [branchesLoading, setBranchesLoading] = useState(false);
+
   const load = useCallback(async () => {
     if (!serviceName) return;
     const data = await fetchServiceByName(decodeURIComponent(serviceName));
     setSvc(data);
     setEnvVars(data.envVars ?? []);
     pipeForm.setFieldsValue(data.pipeline ?? {});
+    // 从 repository (owner/repo) 中提取 owner
+    const repo = data.pipeline?.repository || '';
+    if (repo.includes('/')) {
+      const owner = repo.split('/')[0];
+      setGitOwner(owner);
+    }
   }, [serviceName, pipeForm]);
 
   useEffect(() => { load(); }, [load]);
@@ -139,6 +154,48 @@ export default function ServiceDetail() {
     await updatePipeline(svc.id, vals);
     message.success('流水线配置已保存');
     load();
+  };
+
+  /* ── git remote helpers ── */
+
+  const loadRepos = async (owner: string) => {
+    if (!owner.trim()) { setRepos([]); return; }
+    setReposLoading(true);
+    try {
+      const source = pipeForm.getFieldValue('codeSource') || 'github';
+      const authMode = pipeForm.getFieldValue('authMode') || 'ssh';
+      const token = authMode === 'token' ? pipeForm.getFieldValue('gitToken') : undefined;
+      const data = await fetchGitRepos(source, owner.trim(), token);
+      setRepos(data);
+    } catch { setRepos([]); }
+    setReposLoading(false);
+  };
+
+  const loadBranches = async (repository: string) => {
+    if (!repository) { setBranches([]); return; }
+    setBranchesLoading(true);
+    try {
+      const source = pipeForm.getFieldValue('codeSource') || 'github';
+      const authMode = pipeForm.getFieldValue('authMode') || 'ssh';
+      const token = authMode === 'token' ? pipeForm.getFieldValue('gitToken') : undefined;
+      const data = await fetchGitBranches(source, repository, authMode, token);
+      setBranches(data);
+    } catch { setBranches([]); }
+    setBranchesLoading(false);
+  };
+
+  const handleOwnerSearch = (value: string) => {
+    setGitOwner(value);
+    loadRepos(value);
+    // 清空仓库和分支选择
+    pipeForm.setFieldsValue({ repository: '', branch: '' });
+    setBranches([]);
+  };
+
+  const handleRepoChange = (fullName: string) => {
+    pipeForm.setFieldsValue({ repository: fullName, branch: '' });
+    setBranches([]);
+    loadBranches(fullName);
   };
 
   /* ── unique versions for rollback ── */
@@ -280,13 +337,46 @@ export default function ServiceDetail() {
               <Select options={[
                 { value: 'github', label: 'GitHub' },
                 { value: 'gitlab', label: 'GitLab' },
-              ]} />
+              ]} onChange={() => {
+                pipeForm.setFieldsValue({ repository: '', branch: '' });
+                setRepos([]);
+                setBranches([]);
+                if (gitOwner) loadRepos(gitOwner);
+              }} />
             </Form.Item>
-            <Form.Item name="repository" label="代码仓库">
-              <Input placeholder="org/repo" />
+            <Form.Item label="用户名 / 组织">
+              <Input.Search
+                placeholder="输入 GitHub 用户名或组织名"
+                value={gitOwner}
+                onChange={(e) => setGitOwner(e.target.value)}
+                onSearch={handleOwnerSearch}
+                enterButton="查询仓库"
+                loading={reposLoading}
+              />
             </Form.Item>
-            <Form.Item name="branch" label="分支">
-              <Input placeholder="main" />
+            <Form.Item name="repository" label="代码仓库" rules={[{ required: true, message: '请选择仓库' }]}>
+              <Select
+                showSearch
+                placeholder={repos.length ? '选择仓库' : '请先查询用户名'}
+                loading={reposLoading}
+                optionFilterProp="label"
+                onChange={handleRepoChange}
+                options={repos.map((r) => ({
+                  value: r.fullName,
+                  label: r.private ? `🔒 ${r.name}` : r.name,
+                }))}
+                notFoundContent={reposLoading ? '加载中...' : '无数据'}
+              />
+            </Form.Item>
+            <Form.Item name="branch" label="分支" rules={[{ required: true, message: '请选择分支' }]}>
+              <Select
+                showSearch
+                placeholder={branches.length ? '选择分支' : '请先选择仓库'}
+                loading={branchesLoading}
+                optionFilterProp="label"
+                options={branches.map((b) => ({ value: b, label: b }))}
+                notFoundContent={branchesLoading ? '加载中...' : '无数据'}
+              />
             </Form.Item>
             <Form.Item name="targetDir" label="目标目录">
               <Input placeholder="/opt/app" />

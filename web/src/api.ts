@@ -65,3 +65,23 @@ export const fetchLogs = (query: LogQuery = {}) => {
   return request<{ total: number; page: number; pageSize: number; list: OperationLog[] }>(`/logs?${params.toString()}`);
 };
 export const fetchLogServiceNames = () => request<string[]>('/logs/service-names');
+
+/* git remote info */
+export interface GitRepo {
+  name: string;
+  fullName: string;
+  private: boolean;
+  updatedAt: string;
+}
+
+export const fetchGitRepos = (source: string, owner: string, token?: string) => {
+  const params = new URLSearchParams({ source, owner });
+  if (token) params.set('token', token);
+  return request<GitRepo[]>(`/git/repos?${params.toString()}`);
+};
+
+export const fetchGitBranches = (source: string, repository: string, authMode: string, token?: string) => {
+  const params = new URLSearchParams({ source, repository, authMode });
+  if (token) params.set('token', token);
+  return request<string[]>(`/git/branches?${params.toString()}`);
+};
