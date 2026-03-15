@@ -17,7 +17,7 @@ export default function AppLayout() {
   // 高亮当前菜单项
   const selectedKey = loc.pathname.startsWith('/containers') ? '/containers'
     : loc.pathname.startsWith('/logs') ? '/logs'
-    : '/';
+    : '/';  // 路径已经是相对于 basename 的，无需加前缀
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>

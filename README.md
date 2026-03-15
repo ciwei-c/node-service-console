@@ -17,7 +17,7 @@ cd web && npm install && npm run build && cd ..
 npm start
 ```
 
-启动后访问：`http://localhost:3000`
+启动后访问：`http://localhost/node-service-console`
 
 开发模式：
 
@@ -46,10 +46,10 @@ src/
 │   ├── logs.ts            # 操作日志记录与查询
 │   └── index.ts           # 统一导出
 └── routes/
-    ├── services.ts        # /api/services/*
-    ├── containers.ts      # /api/containers/*
-    ├── webhook.ts         # /api/webhook
-    ├── logs.ts            # /api/logs
+    ├── services.ts        # /node-service-console/api/services/*
+    ├── containers.ts      # /node-service-console/api/containers/*
+    ├── webhook.ts         # /node-service-console/api/webhook
+    ├── logs.ts            # /node-service-console/api/logs
     └── index.ts           # 统一导出
 
 web/                       # React 前端（Vite 构建）
@@ -96,41 +96,85 @@ web/                       # React 前端（Vite 构建）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/services` | 服务列表 |
-| POST | `/api/services` | 创建服务 |
-| GET | `/api/services/:id` | 服务详情（ID） |
-| GET | `/api/services/by-name/:name` | 服务详情（名称） |
-| DELETE | `/api/services/:id` | 删除服务 |
-| POST | `/api/services/:id/publish` | 发布 |
-| POST | `/api/services/:id/rollback` | 回退 |
-| DELETE | `/api/services/:id/deployments/:depId` | 删除版本 |
-| POST | `/api/services/:id/stop` | 停止 |
-| POST | `/api/services/:id/start` | 启动 |
-| PUT | `/api/services/:id/env` | 更新环境变量 |
-| PUT | `/api/services/:id/pipeline` | 更新流水线配置 |
+| GET | `/node-service-console/api/services` | 服务列表 |
+| POST | `/node-service-console/api/services` | 创建服务 |
+| GET | `/node-service-console/api/services/:id` | 服务详情（ID） |
+| GET | `/node-service-console/api/services/by-name/:name` | 服务详情（名称） |
+| DELETE | `/node-service-console/api/services/:id` | 删除服务 |
+| POST | `/node-service-console/api/services/:id/publish` | 发布 |
+| POST | `/node-service-console/api/services/:id/rollback` | 回退 |
+| DELETE | `/node-service-console/api/services/:id/deployments/:depId` | 删除版本 |
+| POST | `/node-service-console/api/services/:id/stop` | 停止 |
+| POST | `/node-service-console/api/services/:id/start` | 启动 |
+| PUT | `/node-service-console/api/services/:id/env` | 更新环境变量 |
+| PUT | `/node-service-console/api/services/:id/pipeline` | 更新流水线配置 |
 
 ### 容器
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/containers` | 容器列表 |
-| GET | `/api/containers/:id/inspect` | 容器详情 |
-| GET | `/api/containers/:id/logs` | 容器日志 |
+| GET | `/node-service-console/api/containers` | 容器列表 |
+| GET | `/node-service-console/api/containers/:id/inspect` | 容器详情 |
+| GET | `/node-service-console/api/containers/:id/logs` | 容器日志 |
 
 ### Webhook
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/webhook` | GitHub/GitLab push 自动发布 |
+| POST | `/node-service-console/api/webhook` | GitHub/GitLab push 自动发布 |
 
 ### 操作日志
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/logs` | 日志列表（支持筛选分页） |
-| GET | `/api/logs/service-names` | 有日志的服务名称列表 |
+| GET | `/node-service-console/api/logs` | 日志列表（支持筛选分页） |
+| GET | `/node-service-console/api/logs/service-names` | 有日志的服务名称列表 |
 
 ## 部署
+
+### 方式一：一键安装（推荐）
+
+将项目上传到云服务器后，执行安装脚本即可自动部署并注册为系统服务，**开机自动启动**：
+
+```bash
+# 上传项目到服务器后
+chmod +x install.sh
+sudo ./install.sh
+```
+
+安装脚本会自动完成：
+1. 复制项目到 `/opt/node-service-console/`
+2. 安装依赖并构建前端
+3. 注册 systemd 服务并启用开机自启
+4. 立即启动服务
+
+常用管理命令：
+
+```bash
+# 查看服务状态
+sudo systemctl status node-service-console
+
+# 查看实时日志
+sudo journalctl -u node-service-console -f
+
+# 重启服务
+sudo systemctl restart node-service-console
+
+# 停止服务
+sudo systemctl stop node-service-console
+
+# 禁用开机自启
+sudo systemctl disable node-service-console
+```
+
+卸载：
+
+```bash
+chmod +x uninstall.sh
+sudo ./uninstall.sh
+```
+
+### 方式二：手动启动
 
 ```bash
 # 安装依赖
@@ -144,4 +188,4 @@ npm start
 pm2 start "npx tsx src/server.ts" --name service-console
 ```
 
-默认端口 `3000`，可在配置文件中修改（Linux: `/etc/node-service-console/config.json`）。
+默认端口 `80`，访问路径 `/node-service-console`，可在配置文件中修改端口（Linux: `/etc/node-service-console/config.json`）。

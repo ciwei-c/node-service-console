@@ -3,6 +3,7 @@
  */
 import os from 'os';
 import app from './app';
+import { BASE_PATH } from './app';
 import { readLocalSettings } from './store';
 
 function getLocalIP(): string {
@@ -15,8 +16,10 @@ function getLocalIP(): string {
   return '127.0.0.1';
 }
 
-const port = process.env.PORT || readLocalSettings().server?.port || 3000;
+const port = process.env.PORT || readLocalSettings().server?.port || 80;
 
 app.listen(port, () => {
-  console.log(`服务管理控制台已启动: http://${getLocalIP()}:${port}`);
+  const host = getLocalIP();
+  const portSuffix = Number(port) === 80 ? '' : `:${port}`;
+  console.log(`服务管理控制台已启动: http://${host}${portSuffix}${BASE_PATH}`);
 });

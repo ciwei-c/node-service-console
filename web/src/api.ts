@@ -1,6 +1,6 @@
 import type { Service, EnvVar, Pipeline, ContainerInfo, OperationLog, LogQuery } from './types';
 
-const BASE = '/api';
+const BASE = '/node-service-console/api';
 
 async function request<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(BASE + url, {

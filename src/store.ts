@@ -24,7 +24,7 @@ const dataPath = path.join(dataDir, 'store.json');
 const logsPath = path.join(dataDir, 'logs.json');
 
 const defaultStore: Store = { services: [] };
-const defaultLocalSettings: LocalSettings = { server: { port: 3000 } };
+const defaultLocalSettings: LocalSettings = { server: { port: 80 } };
 
 /** 确保数据文件存在 */
 function ensureFiles(): void {
