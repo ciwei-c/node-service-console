@@ -19,6 +19,7 @@ import {
 import type { Service, Deployment, EnvVar, Pipeline } from '../types';
 import type { PublishStatus } from '../api';
 import dayjs from 'dayjs';
+import DebugPanel from './DebugPanel';
 
 const { Title, Text } = Typography;
 
@@ -313,6 +314,11 @@ export default function ServiceDetail() {
         <Text type="secondary" style={{ marginLeft: 8 }}>
           访问路径：<Text code>{svc.pipeline?.accessPath || '/' + svc.name}</Text>
         </Text>
+        {svc.hostPort && (
+          <Text type="secondary" style={{ marginLeft: 8 }}>
+            端口映射：<Text code>{svc.hostPort}→{svc.pipeline?.port}</Text>
+          </Text>
+        )}
       </Space>
 
       <Table
@@ -527,6 +533,7 @@ export default function ServiceDetail() {
         defaultActiveKey="deploy"
         items={[
           { key: 'deploy', label: '部署发布', children: deployTab },
+          { key: 'debug', label: '云端调试', children: <DebugPanel service={svc} /> },
           { key: 'settings', label: '服务设置', children: settingsTab },
         ]}
       />

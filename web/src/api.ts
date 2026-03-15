@@ -80,4 +80,25 @@ export const fetchLogs = (query: LogQuery = {}) => {
 };
 export const fetchLogServiceNames = () => request<string[]>('/logs/service-names');
 
+/* debug */
+export interface DebugHttpRequest {
+  method: string;
+  path: string;
+  headers?: Record<string, string>;
+  query?: Record<string, string>;
+  body?: string;
+}
 
+export interface DebugHttpResponse {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+  duration: number;
+}
+
+export const debugHttp = (serviceId: string, payload: DebugHttpRequest) =>
+  request<DebugHttpResponse>(`/services/${serviceId}/debug/http`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });

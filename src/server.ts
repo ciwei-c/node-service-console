@@ -5,6 +5,7 @@ import os from 'os';
 import app from './app';
 import { BASE_PATH } from './app';
 import { readLocalSettings } from './store';
+import { setupWsProxy } from './proxy';
 
 function getLocalIP(): string {
   const interfaces = os.networkInterfaces();
@@ -18,8 +19,11 @@ function getLocalIP(): string {
 
 const port = process.env.PORT || readLocalSettings().server?.port || 80;
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   const host = getLocalIP();
   const portSuffix = Number(port) === 80 ? '' : `:${port}`;
   console.log(`服务管理控制台已启动: http://${host}${portSuffix}${BASE_PATH}`);
 });
+
+/* ── WebSocket 反向代理 ── */
+setupWsProxy(server);

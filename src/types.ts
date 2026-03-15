@@ -34,6 +34,8 @@ export interface Service {
   updatedAt: string;
   currentVersion: string;
   status: 'idle' | 'running' | 'stopped';
+  /** 实际映射到宿主机的端口（自动分配，避免冲突） */
+  hostPort?: number;
   deployments: Deployment[];
   envVars: EnvVar[];
   pipeline: Pipeline;
@@ -55,6 +57,8 @@ export interface ExecResult {
 export interface DockerOpResult {
   ok: boolean;
   logs: string[];
+  /** 实际分配的宿主机端口 */
+  hostPort?: number;
 }
 
 export interface CleanupResult {

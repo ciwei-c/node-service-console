@@ -34,6 +34,8 @@ export interface Service {
   updatedAt: string;
   currentVersion: string;
   status: 'idle' | 'running' | 'stopped';
+  /** 实际映射到宿主机的端口 */
+  hostPort?: number;
   deployments: Deployment[];
   envVars: EnvVar[];
   pipeline: Pipeline;

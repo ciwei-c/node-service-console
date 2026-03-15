@@ -5,6 +5,7 @@ import express, { Router } from 'express';
 import cors from 'cors';
 import path from 'path';
 import { servicesRouter, containersRouter, webhookRouter, logsRouter } from './routes';
+import { reverseProxy } from './proxy';
 
 export const BASE_PATH = '/node-service-console';
 
@@ -12,6 +13,10 @@ const app = express();
 const baseRouter = Router();
 
 app.use(cors());
+
+/* ── 反向代理（在 body 解析之前，保留原始 stream） ── */
+app.use(reverseProxy);
+
 app.use(express.json());
 
 /* ── 静态资源 ── */

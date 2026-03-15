@@ -65,6 +65,7 @@ export function publishServiceAsync(
         freshTarget.deployments.unshift(record);
         freshTarget.currentVersion = version;
         freshTarget.status = 'running';
+        freshTarget.hostPort = execResult.hostPort;
         freshTarget.updatedAt = now;
         writeStore(freshStore);
 
@@ -101,10 +102,10 @@ export function publishServiceAsync(
   return { version };
 }
 
-export function rollbackService(
+export async function rollbackService(
   serviceId: string,
   payload: { targetVersion: string; note?: string; operator?: string },
-): RollbackResult | ErrorResult | null {
+): Promise<RollbackResult | ErrorResult | null> {
   const store = readStore();
   const target = store.services.find((s) => s.id === serviceId);
   if (!target) return null;
@@ -114,7 +115,7 @@ export function rollbackService(
   if (!historical) return { error: 'target-version-not-found' };
 
   // Docker 回退
-  const execResult = dockerRollback(target, targetVersion);
+  const execResult = await dockerRollback(target, targetVersion);
   if (!execResult.ok) {
     addLog({
       action: 'rollback',
@@ -138,6 +139,7 @@ export function rollbackService(
   target.deployments.unshift(record);
   target.currentVersion = targetVersion;
   target.status = 'running';
+  target.hostPort = execResult.hostPort;
   target.updatedAt = now;
   writeStore(store);
 

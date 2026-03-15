@@ -1,6 +1,7 @@
 /**
  * 服务相关 API 路由
  */
+import http from 'http';
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import {
@@ -67,11 +68,11 @@ router.get('/:id/publish-status', (req: Request<{ id: string }>, res: Response) 
   return res.json({ data: status });
 });
 
-router.post('/:id/rollback', (req: Request<{ id: string }>, res: Response) => {
+router.post('/:id/rollback', async (req: Request<{ id: string }>, res: Response) => {
   const { targetVersion, note, operator } = req.body;
   if (!targetVersion || !targetVersion.trim())
     return res.status(400).json({ message: '回退目标版本不能为空' });
-  const result = rollbackService(req.params.id, { targetVersion: targetVersion.trim(), note, operator });
+  const result = await rollbackService(req.params.id, { targetVersion: targetVersion.trim(), note, operator });
   if (!result) return res.status(404).json({ message: '服务不存在' });
   if ('error' in result) {
     if (result.error === 'target-version-not-found')
@@ -123,6 +124,88 @@ router.put('/:id/pipeline', (req: Request<{ id: string }>, res: Response) => {
   const result = updateServicePipeline(req.params.id, req.body);
   if (result === null) return res.status(404).json({ message: '服务不存在' });
   return res.json({ data: result });
+});
+
+/* ── 云端调试 — HTTP 代理 ── */
+
+router.post('/:id/debug/http', async (req: Request<{ id: string }>, res: Response) => {
+  const svc = getServiceById(req.params.id);
+  if (!svc) return res.status(404).json({ message: '服务不存在' });
+  if (svc.status !== 'running') return res.status(400).json({ message: '服务未运行，请先启动服务' });
+
+  const {
+    method = 'GET',
+    path = '/',
+    headers = {},
+    query = {},
+    body,
+  } = req.body;
+
+  const port = svc.hostPort || svc.pipeline?.port;
+  if (!port) return res.status(400).json({ message: '服务未配置端口' });
+
+  // 构建目标 URL
+  const url = new URL(`http://127.0.0.1:${port}${path}`);
+  if (query && typeof query === 'object') {
+    Object.entries(query as Record<string, string>).forEach(([k, v]) => {
+      if (k.trim()) url.searchParams.set(k, String(v));
+    });
+  }
+
+  const proxyHeaders: Record<string, string> = {};
+  if (headers && typeof headers === 'object') {
+    Object.entries(headers as Record<string, string>).forEach(([k, v]) => {
+      if (k.trim()) proxyHeaders[k] = String(v);
+    });
+  }
+
+  const start = Date.now();
+
+  try {
+    const result = await new Promise<{
+      status: number;
+      statusText: string;
+      headers: Record<string, string>;
+      body: string;
+    }>((resolve, reject) => {
+      const proxyReq = http.request(url.toString(), {
+        method: method.toUpperCase(),
+        headers: proxyHeaders,
+      }, (proxyRes) => {
+        const chunks: Buffer[] = [];
+        proxyRes.on('data', (chunk: Buffer) => chunks.push(chunk));
+        proxyRes.on('end', () => {
+          const resHeaders: Record<string, string> = {};
+          Object.entries(proxyRes.headers).forEach(([k, v]) => {
+            resHeaders[k] = Array.isArray(v) ? v.join(', ') : (v || '');
+          });
+          resolve({
+            status: proxyRes.statusCode || 0,
+            statusText: proxyRes.statusMessage || '',
+            headers: resHeaders,
+            body: Buffer.concat(chunks).toString('utf-8'),
+          });
+        });
+      });
+
+      proxyReq.on('error', reject);
+
+      if (body !== undefined && body !== null && ['POST', 'PUT', 'PATCH'].includes(method.toUpperCase())) {
+        const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+        if (!proxyHeaders['content-type'] && !proxyHeaders['Content-Type']) {
+          proxyReq.setHeader('Content-Type', 'application/json');
+        }
+        proxyReq.write(bodyStr);
+      }
+
+      proxyReq.end();
+    });
+
+    const duration = Date.now() - start;
+    return res.json({ data: { ...result, duration } });
+  } catch (err: any) {
+    return res.status(502).json({ message: `请求失败: ${err.message}` });
+  }
 });
 
 export default router;

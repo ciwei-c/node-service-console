@@ -3,6 +3,7 @@
  */
 import { execSync, exec } from 'child_process';
 import { promisify } from 'util';
+import net from 'net';
 import path from 'path';
 import fs from 'fs';
 import type { Service, ExecResult, DockerOpResult, CleanupResult, ContainerInfo } from './types';
@@ -50,6 +51,52 @@ function containerName(serviceName: string): string {
 
 function imageName(serviceName: string, version: string): string {
   return `svc-${serviceName}:${version}`;
+}
+
+/* ── 自动分配可用宿主机端口 ── */
+
+const PORT_RANGE_START = 10000;
+const PORT_RANGE_END = 60000;
+
+/** 检查端口是否可用 */
+function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.once('error', () => resolve(false));
+    srv.once('listening', () => { srv.close(); resolve(true); });
+    srv.listen(port, '0.0.0.0');
+  });
+}
+
+/** 获取所有已运行容器占用的宿主机端口 */
+function getUsedPorts(): Set<number> {
+  const used = new Set<number>();
+  const res = run('docker ps --format "{{.Ports}}"');
+  if (res.ok && res.output) {
+    // Ports 格式: "0.0.0.0:10001->8080/tcp, :::10001->8080/tcp"
+    const matches = res.output.matchAll(/:(\d+)->/g);
+    for (const m of matches) {
+      used.add(parseInt(m[1], 10));
+    }
+  }
+  return used;
+}
+
+/** 分配一个未使用的宿主机端口 */
+async function allocateHostPort(preferredPort?: number): Promise<number> {
+  // 优先使用已有的端口（如重新发布时）
+  if (preferredPort && await isPortAvailable(preferredPort)) {
+    return preferredPort;
+  }
+
+  const usedPorts = getUsedPorts();
+
+  for (let port = PORT_RANGE_START; port <= PORT_RANGE_END; port++) {
+    if (usedPorts.has(port)) continue;
+    if (await isPortAvailable(port)) return port;
+  }
+
+  throw new Error('没有可用的宿主机端口');
 }
 
 /* ── 发布 ── */
@@ -133,12 +180,16 @@ export async function dockerPublish(service: Service, version: string, onLog?: (
     .map((v) => `-e "${v.key}=${v.value}"`)
     .join(' ');
 
-  // 6. docker run
+  // 6. 自动分配宿主机端口
+  const hostPort = await allocateHostPort(service.hostPort);
+  log(`[port] 宿主机端口: ${hostPort} → 容器端口: ${p.port}`);
+
+  // 7. docker run
   const runCmd = [
     'docker run -d',
     `--name ${cn}`,
     '--restart unless-stopped',
-    `-p ${p.port}:${p.port}`,
+    `-p ${hostPort}:${p.port}`,
     envArgs,
     img,
   ].filter(Boolean).join(' ');
@@ -151,15 +202,15 @@ export async function dockerPublish(service: Service, version: string, onLog?: (
   }
   log(`[run] container=${cn} started`);
 
-  // 7. 清理 tmp
+  // 8. 清理 tmp
   fs.rmSync(workDir, { recursive: true, force: true });
 
-  return { ok: true, logs };
+  return { ok: true, logs, hostPort };
 }
 
 /* ── 回退 ── */
 
-export function dockerRollback(service: Service, targetVersion: string): DockerOpResult {
+export async function dockerRollback(service: Service, targetVersion: string): Promise<DockerOpResult> {
   const logs: string[] = [];
   const p = service.pipeline;
   const cn = containerName(service.name);
@@ -180,11 +231,14 @@ export function dockerRollback(service: Service, targetVersion: string): DockerO
     .map((v) => `-e "${v.key}=${v.value}"`)
     .join(' ');
 
+  const hostPort = await allocateHostPort(service.hostPort);
+  logs.push(`[rollback] 宿主机端口: ${hostPort} → 容器端口: ${p.port}`);
+
   const runCmd = [
     'docker run -d',
     `--name ${cn}`,
     '--restart unless-stopped',
-    `-p ${p.port}:${p.port}`,
+    `-p ${hostPort}:${p.port}`,
     envArgs,
     img,
   ].filter(Boolean).join(' ');
@@ -196,7 +250,7 @@ export function dockerRollback(service: Service, targetVersion: string): DockerO
     return { ok: false, logs };
   }
   logs.push(`[rollback] 已回退到 ${targetVersion}`);
-  return { ok: true, logs };
+  return { ok: true, logs, hostPort };
 }
 
 /* ── 停止 / 启动 ── */
@@ -265,7 +319,13 @@ export function dockerInspectContainer(containerId: string): Record<string, unkn
   }
 }
 
+/** 去除 ANSI 转义码 */
+function stripAnsi(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/\x1B\[[0-9;]*[A-Za-z]/g, '');
+}
+
 export function dockerContainerLogs(containerId: string, tail = 100): string {
   const res = run(`docker logs --tail ${tail} ${containerId} 2>&1`);
-  return res.output || '';
+  return stripAnsi(res.output || '');
 }
