@@ -143,13 +143,18 @@ export default function ContainerList() {
     const portsObj = networkSettings?.Ports as Record<string, Array<{HostIp: string; HostPort: string}>> | undefined;
     if (!portsObj) return [];
     const host = window.location.hostname;
+    const seen = new Set<string>();
     const addrs: string[] = [];
     for (const [containerPort, bindings] of Object.entries(portsObj)) {
       if (!bindings) continue;
       for (const b of bindings) {
         const hp = b.HostPort;
         if (hp) {
-          addrs.push(`${host}:${hp} → ${containerPort}`);
+          const key = `${hp}-${containerPort}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            addrs.push(`${host}:${hp} → ${containerPort}`);
+          }
         }
       }
     }

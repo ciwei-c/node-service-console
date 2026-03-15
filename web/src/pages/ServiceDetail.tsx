@@ -9,6 +9,7 @@ import {
   PlusOutlined, DeleteOutlined, PlayCircleOutlined,
   PauseCircleOutlined, EyeOutlined, SaveOutlined,
   LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined,
+  CodeOutlined,
 } from '@ant-design/icons';
 import {
   fetchServiceByName, publishService, rollbackService, deleteDeployment,
@@ -233,8 +234,9 @@ export default function ServiceDetail() {
     load();
   };
 
-  /* ── unique versions for rollback ── */
-  const versions = [...new Set(svc.deployments.map((d) => d.version))];
+  /* ── unique versions for rollback (排除当前版本) ── */
+  const versions = [...new Set(svc.deployments.map((d) => d.version))]
+    .filter((v) => v !== svc.currentVersion);
 
   /* ── table columns ── */
   const columns = [
@@ -246,13 +248,13 @@ export default function ServiceDetail() {
     },
     { title: '版本', dataIndex: 'version', width: 120 },
     { title: '操作人', dataIndex: 'operator', width: 100 },
-    { title: '备注', dataIndex: 'note', ellipsis: true },
+    { title: '备注', dataIndex: 'note', ellipsis: true, width: 120 },
     {
       title: '发布时间', dataIndex: 'publishedAt', width: 180,
       render: (v: string) => dayjs(v).format('YYYY-MM-DD HH:mm:ss'),
     },
     {
-      title: '操作', width: 140,
+      title: '操作', width: 140, fixed: 'right' as const,
       render: (_: unknown, rec: Deployment) => {
         const isCurrentVersion = rec.version === svc.currentVersion;
         return (
@@ -294,6 +296,14 @@ export default function ServiceDetail() {
         >
           <Button type="primary" icon={<RocketOutlined />} loading={publishing}>发布</Button>
         </Popconfirm>
+        {(publishing || publishStatus) && (
+          <Button
+            icon={<CodeOutlined />}
+            onClick={() => setPublishLogOpen(true)}
+          >
+            发布日志
+          </Button>
+        )}
         <Button icon={<RollbackOutlined />} onClick={() => setRbOpen(true)}>
           回退
         </Button>
@@ -316,6 +326,7 @@ export default function ServiceDetail() {
           pageSizeOptions: [10, 20, 50],
         }}
         size="middle"
+        scroll={{ x: 900 }}
         locale={{ emptyText: '暂无部署记录' }}
       />
     </div>

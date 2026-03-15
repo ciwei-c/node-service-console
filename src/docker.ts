@@ -107,14 +107,22 @@ export async function dockerPublish(service: Service, version: string, onLog?: (
     : workDir;
   const dockerfilePath = path.join(buildContext, p.dockerfile || 'Dockerfile');
   log(`[build] image=${img} dockerfile=${p.dockerfile} context=${p.targetDir || '/'}`);
+  log(`[build] 开始构建镜像...`);
   const buildRes = await runAsync(`docker build -t ${img} -f "${dockerfilePath}" "${buildContext}"`);
+  // 输出构建过程的详细日志
+  if (buildRes.output) {
+    for (const line of buildRes.output.split('\n')) {
+      if (line.trim()) log(`[build] ${line}`);
+    }
+  }
   if (!buildRes.ok) {
-    log(`[build] FAILED: ${buildRes.output}`);
+    log(`[build] FAILED`);
     return { ok: false, logs };
   }
   log('[build] OK');
 
   // 4. 停止并移除旧容器
+  log('[stop-old] 停止旧容器...');
   await runAsync(`docker stop ${cn}`);
   await runAsync(`docker rm -f ${cn}`);
   log('[stop-old] done');

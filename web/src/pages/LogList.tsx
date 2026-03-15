@@ -211,7 +211,23 @@ export default function LogList() {
         title="日志详情"
         open={!!detailLog}
         onCancel={() => setDetailLog(null)}
-        footer={<Button onClick={() => setDetailLog(null)}>关闭</Button>}
+        footer={
+          <Space>
+            <Button onClick={() => {
+              const text = [
+                `时间：${dayjs(detailLog!.timestamp).format('YYYY-MM-DD HH:mm:ss')}`,
+                `操作类型：${actionLabelMap[detailLog!.action]?.label ?? detailLog!.action}`,
+                `服务：${detailLog!.serviceName}`,
+                `结果：${detailLog!.success ? '成功' : '失败'}`,
+                detailLog!.version ? `版本：${detailLog!.version}` : '',
+                `操作人：${detailLog!.operator || '-'}`,
+                `详情：${detailLog!.detail || '-'}`,
+              ].filter(Boolean).join('\n');
+              navigator.clipboard.writeText(text).then(() => message.success('已复制日志详情'));
+            }}>复制</Button>
+            <Button onClick={() => setDetailLog(null)}>关闭</Button>
+          </Space>
+        }
         width={640}
       >
         {detailLog && (
