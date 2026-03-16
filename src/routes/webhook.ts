@@ -8,6 +8,22 @@ import { addLog } from '../services/logs';
 
 const router = Router();
 
+/**
+ * 从仓库配置中提取 owner/repo 短格式
+ * 支持：https://github.com/owner/repo、git@github.com:owner/repo.git、owner/repo
+ */
+function extractRepoShortName(repo: string): string {
+  if (!repo) return '';
+  // https://github.com/owner/repo 或 https://github.com/owner/repo.git
+  const httpsMatch = repo.match(/(?:github\.com|gitlab\.com)[/:]([^/]+\/[^/]+?)(?:\.git)?$/i);
+  if (httpsMatch) return httpsMatch[1];
+  // git@github.com:owner/repo.git
+  const sshMatch = repo.match(/[:/]([^/]+\/[^/]+?)(?:\.git)?$/);
+  if (sshMatch) return sshMatch[1];
+  // 已经是 owner/repo 格式
+  return repo;
+}
+
 router.post('/', (req: Request, res: Response) => {
   const payload = req.body;
 
@@ -30,7 +46,7 @@ router.post('/', (req: Request, res: Response) => {
 
   const services = listServices();
   const matched = services.filter(
-    (s) => s.pipeline?.repository === repoFullName && s.pipeline?.branch === branch,
+    (s) => extractRepoShortName(s.pipeline?.repository || '') === repoFullName && s.pipeline?.branch === branch,
   );
 
   if (matched.length === 0) {
