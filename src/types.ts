@@ -48,6 +48,14 @@ export interface Store {
 
 export interface LocalSettings {
   server: { port: number };
+  auth?: {
+    /** scrypt 哈希后的密码（首次启动自动生成） */
+    passwordHash?: string;
+    /** JWT 签名密钥（首次启动自动生成） */
+    jwtSecret?: string;
+    /** Token 有效期（天），默认 7 */
+    tokenExpireDays?: number;
+  };
   github?: { clientId: string };
   logs?: { maxCount?: number; maxAgeDays?: number };
 }

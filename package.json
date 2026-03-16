@@ -8,11 +8,14 @@
     "dev": "cross-env PORT=3100 tsx --watch src/server.ts",
     "dev:web": "cd web && cross-env API_PORT=3100 npm run dev",
     "build:web": "cd web && npm run build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "reset-password": "tsx src/reset-password.ts"
   },
   "dependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
     "cors": "^2.8.5",
     "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.3",
     "uuid": "^10.0.0"
   },
   "devDependencies": {

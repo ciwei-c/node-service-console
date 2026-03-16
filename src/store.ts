@@ -50,6 +50,11 @@ export function readLocalSettings(): LocalSettings {
   return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
 }
 
+export function writeLocalSettings(settings: LocalSettings): void {
+  if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
+  fs.writeFileSync(configPath, JSON.stringify(settings, null, 2), 'utf-8');
+}
+
 /** 返回数据目录路径（供其他模块使用） */
 export function getDataDir(): string {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });

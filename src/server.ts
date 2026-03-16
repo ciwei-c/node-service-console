@@ -7,6 +7,7 @@ import { BASE_PATH } from './app';
 import { readLocalSettings } from './store';
 import { setupWsProxy } from './proxy';
 import { startHealthSync } from './services/healthSync';
+import { initAuth } from './routes/auth';
 
 function getLocalIP(): string {
   const interfaces = os.networkInterfaces();
@@ -19,6 +20,9 @@ function getLocalIP(): string {
 }
 
 const port = process.env.PORT || readLocalSettings().server?.port || 80;
+
+/* ── 初始化认证（首次启动生成密码） ── */
+initAuth();
 
 const server = app.listen(port, () => {
   const host = getLocalIP();

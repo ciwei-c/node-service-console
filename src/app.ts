@@ -5,6 +5,7 @@ import express, { Router } from 'express';
 import cors from 'cors';
 import path from 'path';
 import { servicesRouter, containersRouter, webhookRouter, logsRouter, gitRouter } from './routes';
+import authRouter, { authMiddleware } from './routes/auth';
 import { reverseProxy } from './proxy';
 
 export const BASE_PATH = '/node-service-console';
@@ -21,6 +22,12 @@ app.use(express.json());
 
 /* ── 静态资源 ── */
 baseRouter.use(express.static(path.join(__dirname, '..', 'web', 'dist')));
+
+/* ── 认证路由（无需鉴权） ── */
+baseRouter.use('/api/auth', authRouter);
+
+/* ── JWT 鉴权中间件（保护后续所有 API） ── */
+baseRouter.use(authMiddleware);
 
 /* ── API 路由挂载 ── */
 baseRouter.use('/api/services', servicesRouter);

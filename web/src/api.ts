@@ -2,11 +2,49 @@ import type { Service, EnvVar, Pipeline, ContainerInfo, OperationLog, LogQuery }
 
 const BASE = '/node-service-console/api';
 
+/* ── Token 管理 ── */
+
+const TOKEN_KEY = 'nsc_token';
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+export function isLoggedIn(): boolean {
+  return !!getToken();
+}
+
+/* ── 通用请求 ── */
+
 async function request<T>(url: string, opts?: RequestInit): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(BASE + url, {
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     ...opts,
   });
+
+  // 401 未登录/过期 → 清除 token，跳转登录页
+  if (res.status === 401) {
+    clearToken();
+    window.location.href = '/node-service-console/login';
+    throw new Error('未登录或登录已过期');
+  }
+
   const json = await res.json();
   if (!res.ok) {
     const err: any = new Error(json.message || '请求失败');
@@ -15,6 +53,32 @@ async function request<T>(url: string, opts?: RequestInit): Promise<T> {
   }
   return json.data as T;
 }
+
+/* ── 登录 ── */
+
+export const login = async (password: string): Promise<{ token: string; expiresIn: number }> => {
+  const res = await fetch(BASE + '/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.message || '登录失败');
+  const data = json.data as { token: string; expiresIn: number };
+  setToken(data.token);
+  return data;
+};
+
+export const changePassword = (oldPassword: string, newPassword: string) =>
+  request<{ ok: boolean }>('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ oldPassword, newPassword }),
+  });
+
+export const logout = () => {
+  clearToken();
+  window.location.href = '/node-service-console/login';
+};
 
 /* services */
 export const fetchServices = () => request<Service[]>('/services');

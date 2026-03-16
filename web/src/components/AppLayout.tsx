@@ -1,6 +1,7 @@
 import { useLocation, useNavigate, Outlet } from 'react-router-dom';
-import { Layout as AntLayout, Menu } from 'antd';
-import { AppstoreOutlined, ContainerOutlined, FileTextOutlined } from '@ant-design/icons';
+import { Layout as AntLayout, Menu, Button, Popconfirm } from 'antd';
+import { AppstoreOutlined, ContainerOutlined, FileTextOutlined, LogoutOutlined } from '@ant-design/icons';
+import { logout } from '../api';
 
 const { Header, Content } = AntLayout;
 
@@ -38,6 +39,16 @@ export default function AppLayout() {
           onClick={({ key }) => nav(key)}
           style={{ flex: 1, minWidth: 0 }}
         />
+        <Popconfirm
+          title="确定要退出登录吗？"
+          onConfirm={logout}
+          okText="退出"
+          cancelText="取消"
+        >
+          <Button type="text" icon={<LogoutOutlined />} style={{ color: 'rgba(255,255,255,0.65)' }}>
+            退出
+          </Button>
+        </Popconfirm>
       </Header>
       <Content style={{ background: '#f5f5f5' }}>
         <Outlet />
