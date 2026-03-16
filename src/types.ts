@@ -23,6 +23,8 @@ export interface Deployment {
   version: string;
   commitHash: string;
   commitMessage: string;
+  /** 发布结果：成功 / 被Webhook中止 / 手动停止 */
+  deployStatus?: 'success' | 'aborted' | 'stopped';
   note: string;
   publishedAt: string;
   operator: string;

@@ -92,11 +92,14 @@ export const deleteService = (id: string) =>
 export const publishService = (id: string) =>
   request<{ status: string; version: string }>(`/services/${id}/publish`, { method: 'POST' });
 
+export const stopPublishService = (id: string) =>
+  request<{ version: string; message: string }>(`/services/${id}/stop-publish`, { method: 'POST' });
+
 export interface PublishStatus {
   serviceId: string;
   serviceName: string;
   version: string;
-  status: 'publishing' | 'success' | 'failed';
+  status: 'publishing' | 'success' | 'failed' | 'aborted' | 'stopped';
   logs: string[];
   startedAt: string;
   finishedAt?: string;
@@ -104,6 +107,35 @@ export interface PublishStatus {
 
 export const fetchPublishStatus = (id: string) =>
   request<PublishStatus | null>(`/services/${id}/publish-status`);
+
+/** 订阅发布事件 SSE 流 */
+export function subscribePublishEvents(
+  serviceId: string,
+  handlers: {
+    onStatus: (status: PublishStatus) => void;
+    onLog: (line: string) => void;
+    onError?: () => void;
+  },
+): () => void {
+  const token = getToken();
+  const url = `${BASE}/services/${serviceId}/publish-events${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  const es = new EventSource(url);
+
+  es.addEventListener('status', (e) => {
+    try { handlers.onStatus(JSON.parse(e.data)); } catch { /* ignore */ }
+  });
+  es.addEventListener('log', (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      handlers.onLog(d.line);
+    } catch { /* ignore */ }
+  });
+  es.onerror = () => {
+    handlers.onError?.();
+  };
+
+  return () => es.close();
+}
 
 export const rollbackService = (id: string, body: { targetVersion: string; operator?: string; note?: string }) =>
   request(`/services/${id}/rollback`, { method: 'POST', body: JSON.stringify(body) });

@@ -29,15 +29,25 @@ router.post('/', (req: Request, res: Response) => {
 
   let repoFullName = '';
   let branch = '';
+  let pusher = '';
+  let headCommitMsg = '';
+  let commitCount = 0;
 
   if (payload.repository?.full_name) {
     // GitHub push event
     repoFullName = payload.repository.full_name;
     branch = (payload.ref || '').replace('refs/heads/', '');
+    pusher = payload.pusher?.name || payload.sender?.login || '';
+    headCommitMsg = payload.head_commit?.message?.split('\n')[0] || '';
+    commitCount = payload.commits?.length || 0;
   } else if (payload.project?.path_with_namespace) {
     // GitLab push event
     repoFullName = payload.project.path_with_namespace;
     branch = (payload.ref || '').replace('refs/heads/', '');
+    pusher = payload.user_name || payload.user_username || '';
+    const commits = payload.commits || [];
+    commitCount = commits.length;
+    headCommitMsg = commits.length > 0 ? (commits[commits.length - 1].message?.split('\n')[0] || '') : '';
   }
 
   if (!repoFullName) {
@@ -53,8 +63,18 @@ router.post('/', (req: Request, res: Response) => {
     return res.json({ message: '没有匹配的服务', repo: repoFullName, branch });
   }
 
+  // 构建 Webhook 备注
+  const noteParts: string[] = [];
+  if (pusher) noteParts.push(pusher);
+  if (commitCount > 0) noteParts.push(`${commitCount} commit${commitCount > 1 ? 's' : ''}`);
+  if (headCommitMsg) noteParts.push(headCommitMsg);
+  const webhookNote = noteParts.length > 0
+    ? `Webhook: ${noteParts.join(' · ')}`
+    : `Webhook: ${repoFullName}@${branch}`;
+
   const results = matched.map((svc) => {
-    const result = publishServiceAsync(svc.id);
+    // 强制模式：如果有正在进行的发布，中止它
+    const result = publishServiceAsync(svc.id, { force: true });
     const success = result !== null && !('error' in result);
     const ver = result && !('error' in result) ? result.version : undefined;
 
@@ -63,7 +83,7 @@ router.post('/', (req: Request, res: Response) => {
       serviceName: svc.name,
       success,
       version: ver,
-      detail: `Webhook 触发发布 [${repoFullName}@${branch}]${success ? ` → ${ver}（构建中）` : ' → 失败'}`,
+      detail: `${webhookNote}${success ? ` → ${ver}（构建中）` : ' → 失败'}`,
     });
 
     return {

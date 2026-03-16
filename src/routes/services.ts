@@ -6,9 +6,9 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import {
   listServices, createService, getServiceById, getServiceByName, deleteService,
-  publishServiceAsync, rollbackService, deleteDeployment,
+  publishServiceAsync, rollbackService, deleteDeployment, stopServicePublish,
   stopService, startService, updateServiceEnvVars, updateServicePipeline,
-  getPublishStatus, isPublishing,
+  getPublishStatus, isPublishing, addSseClient,
 } from '../services';
 import { maskService, maskServices } from '../helpers';
 import type { ErrorResult } from '../types';
@@ -64,10 +64,41 @@ router.post('/:id/publish', (req: Request<{ id: string }>, res: Response) => {
   return res.json({ data: { status: 'publishing', version: result.version } });
 });
 
+router.post('/:id/stop-publish', (req: Request<{ id: string }>, res: Response) => {
+  const result = stopServicePublish(req.params.id);
+  if (!result) return res.status(400).json({ message: '没有正在进行的发布' });
+  return res.json({ data: { version: result.version, message: '发布已停止' } });
+});
+
 router.get('/:id/publish-status', (req: Request<{ id: string }>, res: Response) => {
   const status = getPublishStatus(req.params.id);
   if (!status) return res.json({ data: null });
   return res.json({ data: status });
+});
+
+/* SSE — 实时推送发布状态和日志 */
+router.get('/:id/publish-events', (req: Request<{ id: string }>, res: Response) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write('\n');
+
+  // 立即发送当前状态
+  const current = getPublishStatus(req.params.id);
+  if (current) {
+    res.write(`event: status\ndata: ${JSON.stringify(current)}\n\n`);
+  }
+
+  addSseClient(req.params.id, res);
+
+  // 心跳保活
+  const heartbeat = setInterval(() => {
+    try { res.write(': heartbeat\n\n'); } catch { clearInterval(heartbeat); }
+  }, 15000);
+  res.on('close', () => clearInterval(heartbeat));
 });
 
 router.post('/:id/rollback', async (req: Request<{ id: string }>, res: Response) => {

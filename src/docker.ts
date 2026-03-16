@@ -118,9 +118,10 @@ async function allocateHostPort(preferredPort?: number): Promise<number> {
 
 /* ── 发布 ── */
 
-export async function dockerPublish(service: Service, version: string, onLog?: (line: string) => void): Promise<DockerOpResult> {
+export async function dockerPublish(service: Service, version: string, onLog?: (line: string) => void, abortSignal?: AbortSignal): Promise<DockerOpResult> {
   const logs: string[] = [];
   const log = (line: string) => { logs.push(line); onLog?.(line); };
+  const checkAbort = () => { if (abortSignal?.aborted) throw new Error('ABORTED'); };
   const p = service.pipeline;
   const cn = containerName(service.name);
   const img = imageName(service.name, version);
@@ -164,6 +165,7 @@ export async function dockerPublish(service: Service, version: string, onLog?: (
     return { ok: false, logs };
   }
   log('[clone] OK');
+  checkAbort();
 
   // 获取 commit 信息
   const commitHashRes = run(`git -C "${workDir}" log -1 --format=%H`);
@@ -191,12 +193,14 @@ export async function dockerPublish(service: Service, version: string, onLog?: (
     return { ok: false, logs };
   }
   log('[build] OK');
+  checkAbort();
 
   // 4. 停止并移除旧容器
   log('[stop-old] 停止旧容器...');
   await runAsync(`docker stop ${cn}`);
   await runAsync(`docker rm -f ${cn}`);
   log('[stop-old] done');
+  checkAbort();
 
   // 5. 组装环境变量（通过 env-file 避免 shell 注入）
   const envFile = writeEnvFile(service.envVars, workDir);

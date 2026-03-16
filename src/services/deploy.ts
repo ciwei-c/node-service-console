@@ -5,23 +5,69 @@ import { v4 as uuidv4 } from 'uuid';
 import { readStore, writeStore } from '../store';
 import { dockerPublish, dockerRebuildFromCommit, dockerRemoveImage } from '../docker';
 import { addLog } from './logs';
-import { startPublish, addPublishLog, finishPublish, isPublishing } from './publishTracker';
+import { startPublish, addPublishLog, finishPublish, isPublishing, abortPublish, stopPublish } from './publishTracker';
 import type { Service, Deployment, PublishResult, RollbackResult, ErrorResult } from '../types';
 
+/** 保存被中止/停止的发布记录到 store */
+function saveAbortedRecord(serviceId: string, version: string, note: string, deployStatus: 'aborted' | 'stopped' = 'aborted'): void {
+  const store = readStore();
+  const target = store.services.find((s) => s.id === serviceId);
+  if (!target) return;
+  const record: Deployment = {
+    id: uuidv4(),
+    action: 'publish',
+    version,
+    commitHash: '',
+    commitMessage: '',
+    deployStatus,
+    note,
+    publishedAt: new Date().toISOString(),
+    operator: deployStatus === 'stopped' ? 'user' : 'webhook',
+  };
+  target.deployments.unshift(record);
+  target.updatedAt = new Date().toISOString();
+  writeStore(store);
+  addLog({
+    action: 'publish',
+    serviceName: target.name,
+    success: false,
+    version,
+    detail: note,
+  });
+}
+
+/** 手动停止正在进行的发布 */
+export function stopServicePublish(serviceId: string): { version: string } | null {
+  const stopped = stopPublish(serviceId);
+  if (!stopped) return null;
+  saveAbortedRecord(serviceId, stopped.version, '手动停止发布', 'stopped');
+  return stopped;
+}
 /**
  * 启动发布（fire-and-forget）
  * 返回版本号后立即返回，实际构建在后台执行。
- * 前端通过 publish-status API 轮询查看进度。
+ * 前端通过 SSE 实时查看进度。
+ * 
+ * @param force 为 true 时，若有正在发布的任务则中止它（webhook 场景）
  */
 export function publishServiceAsync(
   serviceId: string,
+  options?: { force?: boolean },
 ): { version: string } | ErrorResult | null {
   const store = readStore();
   const target = store.services.find((s) => s.id === serviceId);
   if (!target) return null;
 
   if (isPublishing(serviceId)) {
-    return { error: 'already-publishing' };
+    if (options?.force) {
+      const aborted = abortPublish(serviceId);
+      // 保存被中止的发布记录
+      if (aborted) {
+        saveAbortedRecord(serviceId, aborted.version, '被新的 Webhook 发布中止');
+      }
+    } else {
+      return { error: 'already-publishing' };
+    }
   }
 
   const publishCount = target.deployments.filter((d) => d.action === 'publish').length;
@@ -34,15 +80,18 @@ export function publishServiceAsync(
     }, publishCount);
   const version = `${target.name}-${maxVersionNum + 1}`;
 
-  // 启动追踪器
-  startPublish(serviceId, target.name, version);
+  // 启动追踪器（返回 abort signal）
+  const abortSignal = startPublish(serviceId, target.name, version);
 
   // 后台执行，不阻塞请求
   (async () => {
     try {
       const execResult = await dockerPublish(target, version, (line) => {
         addPublishLog(serviceId, line);
-      });
+      }, abortSignal);
+
+      // 检查是否已被中止
+      if (abortSignal.aborted) return;
 
       if (!execResult.ok) {
         finishPublish(serviceId, false);
@@ -99,6 +148,7 @@ export function publishServiceAsync(
 
       finishPublish(serviceId, true);
     } catch (err: any) {
+      if (abortSignal.aborted) return; // 被中止，不做任何记录
       addPublishLog(serviceId, `[异常] ${err.message}`);
       finishPublish(serviceId, false);
       addLog({

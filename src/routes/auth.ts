@@ -156,12 +156,15 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
   }
 
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const tokenFromQuery = req.query.token as string | undefined;
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+  const token = bearerToken || tokenFromQuery;
+
+  if (!token) {
     res.status(401).json({ message: '未登录，请先登录' });
     return;
   }
 
-  const token = authHeader.slice(7);
   try {
     jwt.verify(token, getJwtSecret());
     next();

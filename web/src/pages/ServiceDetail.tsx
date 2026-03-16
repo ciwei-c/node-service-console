@@ -9,12 +9,12 @@ import {
   PlusOutlined, DeleteOutlined, PlayCircleOutlined,
   PauseCircleOutlined, EyeOutlined, SaveOutlined,
   LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined,
-  CodeOutlined,
+  CodeOutlined, StopOutlined,
 } from '@ant-design/icons';
 import {
   fetchServiceByName, publishService, rollbackService, deleteDeployment,
   stopService, startService, updateEnvVars, updatePipeline, deleteService,
-  fetchPublishStatus,
+  fetchPublishStatus, subscribePublishEvents, stopPublishService,
 } from '../api';
 import type { Service, Deployment, EnvVar, Pipeline } from '../types';
 import type { PublishStatus } from '../api';
@@ -52,9 +52,12 @@ export default function ServiceDetail() {
   /* publish log modal state */
   const [publishLogOpen, setPublishLogOpen] = useState(false);
   const [publishStatus, setPublishStatus] = useState<PublishStatus | null>(null);
+  const [publishLogs, setPublishLogs] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const publishLogOpenRef = useRef(publishLogOpen);
+  publishLogOpenRef.current = publishLogOpen;
+  const sseCloseRef = useRef<(() => void) | null>(null);
 
   const load = useCallback(async () => {
     if (!serviceName) return;
@@ -62,44 +65,81 @@ export default function ServiceDetail() {
     setSvc(data);
     setEnvVars(data.envVars ?? []);
     pipeForm.setFieldsValue(data.pipeline ?? {});
+    return data;
   }, [serviceName, pipeForm]);
 
   useEffect(() => { load(); }, [load]);
 
-  /* ── hooks that must be before early return ── */
+  /* ── SSE 订阅发布事件 ── */
 
-  const stopPollPublish = useCallback(() => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
+  const closeSse = useCallback(() => {
+    sseCloseRef.current?.();
+    sseCloseRef.current = null;
   }, []);
 
-  useEffect(() => () => stopPollPublish(), [stopPollPublish]);
+  useEffect(() => () => closeSse(), [closeSse]);
 
-  const startPollPublish = useCallback((serviceId: string) => {
-    pollTimerRef.current = setInterval(async () => {
+  const subscribeSse = useCallback((serviceId: string) => {
+    closeSse();
+    sseCloseRef.current = subscribePublishEvents(serviceId, {
+      onStatus: (status) => {
+        setPublishStatus(status);
+        setPublishLogs(status.logs);
+        if (status.status === 'publishing') {
+          setPublishing(true);
+        } else if (status.status === 'aborted') {
+          // 被新发布中止 → 重新订阅以跟踪新发布
+          message.info('当前构建已被新的 Webhook 发布中止');
+          setPublishLogs([]);
+          setPublishStatus(null);
+          setTimeout(() => subscribeSse(serviceId), 500);
+        } else if (status.status === 'stopped') {
+          setPublishing(false);
+          closeSse();
+          message.info('发布已手动停止');
+          load();
+        } else {
+          setPublishing(false);
+          closeSse();
+          if (status.status === 'success') {
+            message.success('发布成功');
+          } else {
+            message.error('发布失败');
+          }
+          load();
+        }
+      },
+      onLog: (line) => {
+        setPublishLogs((prev) => [...prev, line]);
+        if (publishLogOpenRef.current) {
+          setTimeout(() => logEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+        }
+      },
+    });
+  }, [closeSse, load]);
+
+  /* ── 页面加载时检查是否有进行中的发布 ── */
+  useEffect(() => {
+    if (!svc) return;
+    let cancelled = false;
+
+    (async () => {
       try {
-        const status = await fetchPublishStatus(serviceId);
+        const status = await fetchPublishStatus(svc.id);
+        if (cancelled) return;
         if (status) {
           setPublishStatus(status);
-          setTimeout(() => logEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-          if (status.status !== 'publishing') {
-            stopPollPublish();
-            setPublishing(false);
-            if (status.status === 'success') {
-              message.success('发布成功');
-            } else {
-              message.error('发布失败');
-            }
-            load();
+          setPublishLogs(status.logs);
+          if (status.status === 'publishing') {
+            setPublishing(true);
+            subscribeSse(svc.id);
           }
         }
-      } catch {
-        // ignore
-      }
-    }, 1500);
-  }, [stopPollPublish, load]);
+      } catch { /* ignore */ }
+    })();
+
+    return () => { cancelled = true; };
+  }, [svc?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!svc) return null;
 
@@ -111,18 +151,27 @@ export default function ServiceDetail() {
     try {
       setPublishing(true);
       setPublishStatus(null);
+      setPublishLogs([]);
       setPublishLogOpen(true);
       await publishService(svc.id);
-      startPollPublish(svc.id);
+      subscribeSse(svc.id);
     } catch (err: any) {
       setPublishing(false);
       if (err.message?.includes('正在发布中')) {
         setPublishing(true);
-        startPollPublish(svc.id);
+        subscribeSse(svc.id);
       } else {
         message.error(err.message || '发布失败');
         setPublishLogOpen(false);
       }
+    }
+  };
+
+  const handleStopPublish = async () => {
+    try {
+      await stopPublishService(svc.id);
+    } catch (err: any) {
+      message.error(err.message || '停止失败');
     }
   };
 
@@ -238,10 +287,13 @@ export default function ServiceDetail() {
     handlePublish();
   };
 
-  /* ── unique versions for rollback (排除当前版本) ── */
+  /* ── unique versions for rollback (排除当前版本、中止和停止的) ── */
   const hasDeployments = svc.deployments.some((d) => d.action === 'publish');
   const rollbackVersions = svc.deployments
-    .filter((d) => d.action === 'publish' && d.version !== svc.currentVersion)
+    .filter((d) => d.action === 'publish'
+      && d.version !== svc.currentVersion
+      && d.deployStatus !== 'aborted'
+      && d.deployStatus !== 'stopped')
     .reduce<Deployment[]>((acc, d) => {
       if (!acc.find((x) => x.version === d.version)) acc.push(d);
       return acc;
@@ -258,10 +310,14 @@ export default function ServiceDetail() {
   /* ── table columns ── */
   const columns = [
     {
-      title: '动作', dataIndex: 'action', width: 80,
-      render: (v: string) => v === 'publish'
-        ? <Tag color="blue">发布</Tag>
-        : <Tag color="gold">回退</Tag>,
+      title: '动作', dataIndex: 'action', width: 100,
+      render: (_: string, rec: Deployment) => {
+        if (rec.deployStatus === 'aborted') return <Tag color="orange">已中止</Tag>;
+        if (rec.deployStatus === 'stopped') return <Tag color="red">已停止</Tag>;
+        return rec.action === 'publish'
+          ? <Tag color="blue">发布</Tag>
+          : <Tag color="gold">回退</Tag>;
+      },
     },
     { title: '版本', dataIndex: 'version', width: 120 },
     {
@@ -316,6 +372,35 @@ export default function ServiceDetail() {
   /* ── Tab: 部署发布 ── */
   const deployTab = (
     <div>
+      {publishing && (
+        <Alert
+          type="info"
+          showIcon
+          icon={<LoadingOutlined />}
+          message={
+            <Space>
+              <span>正在发布 <strong>{publishStatus?.version || '...'}</strong></span>
+              <Button type="link" size="small" onClick={() => setPublishLogOpen(true)}>
+                查看日志
+              </Button>
+              <Popconfirm
+                title="确定停止当前发布？"
+                description={'停止后该版本将标记为「已停止」，不可用于回退'}
+                onConfirm={handleStopPublish}
+                okText="停止"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+              >
+                <Button type="link" size="small" danger icon={<StopOutlined />}>
+                  停止发布
+                </Button>
+              </Popconfirm>
+            </Space>
+          }
+          style={{ marginBottom: 16 }}
+          banner
+        />
+      )}
       <Space style={{ marginBottom: 20 }} wrap>
         <Popconfirm
           title="确认发布新版本？"
@@ -635,6 +720,8 @@ export default function ServiceDetail() {
             {publishStatus?.status === 'publishing' && <Tag icon={<LoadingOutlined />} color="processing">构建中</Tag>}
             {publishStatus?.status === 'success' && <Tag icon={<CheckCircleOutlined />} color="success">发布成功</Tag>}
             {publishStatus?.status === 'failed' && <Tag icon={<CloseCircleOutlined />} color="error">发布失败</Tag>}
+            {publishStatus?.status === 'aborted' && <Tag color="orange">已中止</Tag>}
+            {publishStatus?.status === 'stopped' && <Tag color="red">已停止</Tag>}
           </Space>
         }
         placement="right"
@@ -654,7 +741,7 @@ export default function ServiceDetail() {
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-all',
         }}>
-          {publishStatus?.logs.length ? publishStatus.logs.map((line, i) => (
+          {publishLogs.length ? publishLogs.map((line, i) => (
             <div key={i} style={{
               color: line.includes('FAILED') || line.includes('异常')
                 ? '#f48771'
