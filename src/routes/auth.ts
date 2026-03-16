@@ -139,6 +139,11 @@ router.post('/change-password', (req: Request, res: Response) => {
 /* ── JWT 校验中间件 ── */
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
+  // 只拦截 /api 开头的请求，静态资源和 SPA 路由直接放行
+  if (!req.path.startsWith('/api')) {
+    next();
+    return;
+  }
   // 登录接口和 Webhook 不需要鉴权
   if (req.path === '/api/auth/login') {
     next();
