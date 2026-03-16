@@ -44,6 +44,16 @@ export interface Service {
   pipeline: Pipeline;
 }
 
+/** 服务列表摘要（轻量） */
+export interface ServiceSummary {
+  id: string;
+  name: string;
+  status: 'idle' | 'running' | 'stopped';
+  currentVersion: string;
+  updatedAt: string;
+  codeSource: string;
+}
+
 /* ── Docker 容器 ── */
 
 export interface ContainerInfo {

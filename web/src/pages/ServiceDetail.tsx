@@ -20,6 +20,7 @@ import type { Service, Deployment, EnvVar, Pipeline } from '../types';
 import type { PublishStatus } from '../api';
 import dayjs from 'dayjs';
 import DebugPanel from './DebugPanel';
+import { useServiceStore } from '../serviceStore';
 
 const { Title, Text } = Typography;
 
@@ -33,6 +34,7 @@ export default function ServiceDetail() {
   const { serviceName } = useParams<{ serviceName: string }>();
   const nav = useNavigate();
   const [svc, setSvc] = useState<Service | null>(null);
+  const { patchService, removeService } = useServiceStore();
 
   /* modals */
   const [rbOpen, setRbOpen] = useState(false);
@@ -65,8 +67,17 @@ export default function ServiceDetail() {
     setSvc(data);
     setEnvVars(data.envVars ?? []);
     pipeForm.setFieldsValue(data.pipeline ?? {});
+    // 回写到全局缓存，返回列表时无需重新拉取
+    patchService({
+      id: data.id,
+      name: data.name,
+      status: data.status,
+      currentVersion: data.currentVersion,
+      updatedAt: data.updatedAt,
+      codeSource: data.pipeline?.codeSource ?? 'github',
+    });
     return data;
-  }, [serviceName, pipeForm]);
+  }, [serviceName, pipeForm, patchService]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -81,11 +92,24 @@ export default function ServiceDetail() {
   useEffect(() => {
     if (!svc) return;
 
+    let isFirstEvent = true;
+
     closeSse();
     sseCloseRef.current = subscribePublishEvents(svc.id, {
       onStatus: (status) => {
         setPublishStatus(status);
         setPublishLogs(status.logs);
+
+        // 首次连接收到的终态（上一次构建的结果），静默处理，不弹消息
+        if (isFirstEvent) {
+          isFirstEvent = false;
+          if (status.status !== 'publishing') {
+            // 已结束的状态，仅同步 UI 状态即可
+            setPublishing(false);
+            return;
+          }
+        }
+
         if (status.status === 'publishing') {
           setPublishing(true);
           setPublishLogOpen(true);
@@ -609,6 +633,7 @@ export default function ServiceDetail() {
               description="删除后数据将无法恢复。"
               onConfirm={async () => {
                 await deleteService(svc.id);
+                removeService(svc.id);
                 message.success('服务已删除');
                 nav('/');
               }}

@@ -10,7 +10,7 @@ import {
   stopService, startService, updateServiceEnvVars, updateServicePipeline,
   getPublishStatus, isPublishing, addSseClient,
 } from '../services';
-import { maskService, maskServices } from '../helpers';
+import { maskService } from '../helpers';
 import type { ErrorResult } from '../types';
 
 const router = Router();
@@ -18,7 +18,15 @@ const router = Router();
 /* ── CRUD ── */
 
 router.get('/', (_req: Request, res: Response) => {
-  res.json({ data: maskServices(listServices()) });
+  const summaries = listServices().map((s) => ({
+    id: s.id,
+    name: s.name,
+    status: s.status,
+    currentVersion: s.currentVersion,
+    updatedAt: s.updatedAt,
+    codeSource: s.pipeline?.codeSource ?? 'github',
+  }));
+  res.json({ data: summaries });
 });
 
 router.post('/', (req: Request, res: Response) => {

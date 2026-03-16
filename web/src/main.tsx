@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import App from './App';
+import { ServiceStoreProvider } from './serviceStore';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -12,7 +13,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       token: { colorPrimary: '#1677ff', borderRadius: 8 },
     }}>
       <BrowserRouter basename="/node-service-console">
-        <App />
+        <ServiceStoreProvider>
+          <App />
+        </ServiceStoreProvider>
       </BrowserRouter>
     </ConfigProvider>
   </React.StrictMode>,

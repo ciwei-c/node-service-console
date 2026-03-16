@@ -1,4 +1,4 @@
-import type { Service, EnvVar, Pipeline, ContainerInfo, OperationLog, LogQuery } from './types';
+import type { Service, ServiceSummary, EnvVar, Pipeline, ContainerInfo, OperationLog, LogQuery } from './types';
 
 const BASE = '/node-service-console/api';
 
@@ -81,7 +81,7 @@ export const logout = () => {
 };
 
 /* services */
-export const fetchServices = () => request<Service[]>('/services');
+export const fetchServices = () => request<ServiceSummary[]>('/services');
 export const fetchServiceByName = (name: string) => request<Service>(`/services/by-name/${encodeURIComponent(name)}`);
 export const createService = (name: string) =>
   request<Service>('/services', { method: 'POST', body: JSON.stringify({ name }) });

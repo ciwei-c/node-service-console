@@ -6,8 +6,8 @@ import {
 import {
   PlusOutlined, CloudServerOutlined, ClockCircleOutlined, TagOutlined,
 } from '@ant-design/icons';
-import { fetchServices, createService } from '../api';
-import type { Service } from '../types';
+import { createService } from '../api';
+import { useServiceStore } from '../serviceStore';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -20,30 +20,27 @@ const statusMap: Record<string, { color: string; label: string }> = {
 
 export default function ServiceList() {
   const nav = useNavigate();
-  const [services, setServices] = useState<Service[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { services, loading, loadServices, addService } = useServiceStore();
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      setServices(await fetchServices());
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { load(); }, []);
+  useEffect(() => { loadServices(); }, [loadServices]);
 
   const handleCreate = async () => {
     try {
       const { name } = await form.validateFields();
-      await createService(name.trim());
+      const svc = await createService(name.trim());
       message.success('服务创建成功');
       form.resetFields();
       setOpen(false);
-      load();
+      addService({
+        id: svc.id,
+        name: svc.name,
+        status: svc.status,
+        currentVersion: svc.currentVersion,
+        updatedAt: svc.updatedAt,
+        codeSource: svc.pipeline?.codeSource ?? 'github',
+      });
     } catch {
       /* validation error */
     }
@@ -86,7 +83,7 @@ export default function ServiceList() {
                   </Space>
                   <Space size={4}>
                     <CloudServerOutlined style={{ color: '#8c8c8c' }} />
-                    <Text type="secondary">{svc.pipeline?.codeSource ?? 'github'}</Text>
+                    <Text type="secondary">{svc.codeSource}</Text>
                   </Space>
                   <Space size={4}>
                     <ClockCircleOutlined style={{ color: '#8c8c8c' }} />
