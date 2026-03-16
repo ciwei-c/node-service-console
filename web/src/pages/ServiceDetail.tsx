@@ -389,14 +389,6 @@ export default function ServiceDetail() {
             disabled={publishing && publishStatus?.action === 'rollback'}
           >发布</Button>
         </Popconfirm>
-        {(publishing || publishStatus) && (
-          <Button
-            icon={<CodeOutlined />}
-            onClick={() => setPublishLogOpen(true)}
-          >
-            {publishStatus?.action === 'rollback' ? '回退日志' : '发布日志'}
-          </Button>
-        )}
         <Button icon={<RollbackOutlined />} onClick={() => setRbOpen(true)}
           loading={publishing && publishStatus?.action === 'rollback'}
           disabled={publishing && publishStatus?.action !== 'rollback'}
