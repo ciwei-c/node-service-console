@@ -5,9 +5,13 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type { LogAction, OperationLog, LogStore } from '../types';
-import { getDataDir } from '../store';
+import { getDataDir, readLocalSettings } from '../store';
 
 const logDataPath = path.join(getDataDir(), 'logs.json');
+
+/** 默认日志保留策略 */
+const DEFAULT_MAX_COUNT = 5000;
+const DEFAULT_MAX_AGE_DAYS = 90;
 
 function readLogStore(): LogStore {
   if (!fs.existsSync(logDataPath)) {
@@ -41,8 +45,28 @@ export function addLog(params: {
     operator: params.operator || 'system',
   };
   store.logs.unshift(log); // 最新在前
+
+  // 自动清理过期/超量日志
+  cleanupLogs(store);
+
   writeLogStore(store);
   return log;
+}
+
+/** 清理日志：按数量上限 + 过期天数 */
+function cleanupLogs(store: LogStore): void {
+  const settings = readLocalSettings();
+  const maxCount = settings.logs?.maxCount ?? DEFAULT_MAX_COUNT;
+  const maxAgeDays = settings.logs?.maxAgeDays ?? DEFAULT_MAX_AGE_DAYS;
+
+  // 按数量截断
+  if (store.logs.length > maxCount) {
+    store.logs = store.logs.slice(0, maxCount);
+  }
+
+  // 按时间过滤
+  const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+  store.logs = store.logs.filter((l) => new Date(l.timestamp).getTime() >= cutoff);
 }
 
 /** 查询日志 (支持多维度筛选 + 分页) */

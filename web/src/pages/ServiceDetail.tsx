@@ -239,6 +239,7 @@ export default function ServiceDetail() {
   };
 
   /* ── unique versions for rollback (排除当前版本) ── */
+  const hasDeployments = svc.deployments.some((d) => d.action === 'publish');
   const rollbackVersions = svc.deployments
     .filter((d) => d.action === 'publish' && d.version !== svc.currentVersion)
     .reduce<Deployment[]>((acc, d) => {
@@ -462,8 +463,10 @@ export default function ServiceDetail() {
           initialValues={{ codeSource: 'github', branch: 'main', targetDir: '/opt/app', port: 3000, dockerfile: 'Dockerfile', accessPath: '/' + svc.name, authMode: 'ssh', gitToken: '' }}
         >
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 24px' }}>
-            <Form.Item name="codeSource" label="代码源" rules={[{ required: true }]}>
-              <Select options={[
+            <Form.Item name="codeSource" label="代码源" rules={[{ required: true }]}
+              tooltip={hasDeployments ? '已有部署记录，代码源不可更改' : undefined}
+            >
+              <Select disabled={hasDeployments} options={[
                 { value: 'github', label: 'GitHub' },
                 { value: 'gitlab', label: 'GitLab' },
               ]} />
@@ -474,8 +477,10 @@ export default function ServiceDetail() {
                 { value: 'token', label: 'Git Token' },
               ]} />
             </Form.Item>
-            <Form.Item name="repository" label="代码仓库" rules={[{ required: true, message: '请输入仓库地址' }]}>
-              <Input placeholder="owner/repo-name" />
+            <Form.Item name="repository" label="代码仓库" rules={[{ required: true, message: '请输入仓库地址' }]}
+              tooltip={hasDeployments ? '已有部署记录，仓库地址不可更改（历史版本 commit 与仓库绑定）' : undefined}
+            >
+              <Input placeholder="owner/repo-name" disabled={hasDeployments} />
             </Form.Item>
             <Form.Item name="branch" label="分支" rules={[{ required: true, message: '请输入分支名' }]}>
               <Input placeholder="main" />

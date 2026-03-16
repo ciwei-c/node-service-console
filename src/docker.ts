@@ -7,8 +7,25 @@ import net from 'net';
 import path from 'path';
 import fs from 'fs';
 import type { Service, ExecResult, DockerOpResult, ContainerInfo } from './types';
+import type { EnvVar } from './types';
 
 const execAsync = promisify(exec);
+
+/* ── 环境变量 env-file 生成（避免 shell 注入） ── */
+
+function writeEnvFile(envVars: EnvVar[], workDir: string): string | null {
+  const vars = (envVars || []).filter((v) => v.key.trim());
+  if (vars.length === 0) return null;
+  const envFilePath = path.join(workDir, '.env.docker');
+  const content = vars.map((v) => `${v.key}=${v.value}`).join('\n');
+  fs.mkdirSync(path.dirname(envFilePath), { recursive: true });
+  fs.writeFileSync(envFilePath, content, 'utf-8');
+  return envFilePath;
+}
+
+function cleanupEnvFile(envFilePath: string | null): void {
+  if (envFilePath && fs.existsSync(envFilePath)) fs.unlinkSync(envFilePath);
+}
 
 /* ── 异步 Shell 执行（用于耗时操作，不阻塞事件循环） ── */
 
@@ -181,11 +198,8 @@ export async function dockerPublish(service: Service, version: string, onLog?: (
   await runAsync(`docker rm -f ${cn}`);
   log('[stop-old] done');
 
-  // 5. 组装环境变量
-  const envArgs = (service.envVars || [])
-    .filter((v) => v.key)
-    .map((v) => `-e "${v.key}=${v.value}"`)
-    .join(' ');
+  // 5. 组装环境变量（通过 env-file 避免 shell 注入）
+  const envFile = writeEnvFile(service.envVars, workDir);
 
   // 6. 自动分配宿主机端口
   const hostPort = await allocateHostPort(service.hostPort);
@@ -197,12 +211,13 @@ export async function dockerPublish(service: Service, version: string, onLog?: (
     `--name ${cn}`,
     '--restart unless-stopped',
     `-p ${hostPort}:${p.port}`,
-    envArgs,
+    envFile ? `--env-file "${envFile}"` : '',
     img,
   ].filter(Boolean).join(' ');
 
   log(`[run] ${runCmd}`);
   const runRes = await runAsync(runCmd);
+  cleanupEnvFile(envFile);
   if (!runRes.ok) {
     log(`[run] FAILED: ${runRes.output}`);
     return { ok: false, logs };
@@ -274,6 +289,10 @@ export async function dockerRebuildFromCommit(
   }
   log('[checkout] OK');
 
+  // 获取 commit message
+  const commitMsgRes = run(`git -C "${workDir}" log -1 --format=%s`);
+  const commitMessage = commitMsgRes.ok ? commitMsgRes.output.trim() : '';
+
   // 4. docker build
   const buildContext = p.targetDir && p.targetDir !== '/'
     ? path.join(workDir, p.targetDir.replace(/^\/+/, ''))
@@ -300,11 +319,10 @@ export async function dockerRebuildFromCommit(
   await runAsync(`docker rm -f ${cn}`);
   log('[stop-old] done');
 
-  // 6. 组装环境变量
-  const envArgs = (service.envVars || [])
-    .filter((v) => v.key)
-    .map((v) => `-e "${v.key}=${v.value}"`)
-    .join(' ');
+  // 6. 组装环境变量（通过 env-file 避免 shell 注入）
+  const tmpEnvDir = path.join(__dirname, '..', 'tmp', `${service.name}-env`);
+  fs.mkdirSync(tmpEnvDir, { recursive: true });
+  const envFile = writeEnvFile(service.envVars, tmpEnvDir);
 
   // 7. 自动分配宿主机端口
   const hostPort = await allocateHostPort(service.hostPort);
@@ -316,12 +334,14 @@ export async function dockerRebuildFromCommit(
     `--name ${cn}`,
     '--restart unless-stopped',
     `-p ${hostPort}:${p.port}`,
-    envArgs,
+    envFile ? `--env-file "${envFile}"` : '',
     img,
   ].filter(Boolean).join(' ');
 
   log(`[run] ${runCmd}`);
   const runRes = await runAsync(runCmd);
+  cleanupEnvFile(envFile);
+  if (fs.existsSync(tmpEnvDir)) fs.rmSync(tmpEnvDir, { recursive: true, force: true });
   if (!runRes.ok) {
     log(`[run] FAILED: ${runRes.output}`);
     fs.rmSync(workDir, { recursive: true, force: true });
@@ -332,7 +352,7 @@ export async function dockerRebuildFromCommit(
   // 9. 清理 tmp
   fs.rmSync(workDir, { recursive: true, force: true });
 
-  return { ok: true, logs, hostPort, commitHash, commitMessage: '' };
+  return { ok: true, logs, hostPort, commitHash, commitMessage };
 }
 
 /* ── 停止 / 启动 ── */
@@ -398,4 +418,15 @@ function stripAnsi(s: string): string {
 export function dockerContainerLogs(containerId: string, tail = 100): string {
   const res = run(`docker logs --tail ${tail} ${containerId} 2>&1`);
   return stripAnsi(res.output || '');
+}
+
+/**
+ * 查询指定服务容器的实际状态
+ * 返回 'running' | 'exited' | 'restarting' | null(不存在)
+ */
+export function getContainerState(serviceName: string): string | null {
+  const cn = containerName(serviceName);
+  const res = run(`docker inspect -f "{{.State.Status}}" ${cn}`);
+  if (!res.ok) return null;
+  return res.output.trim() || null;
 }

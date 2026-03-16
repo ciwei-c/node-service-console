@@ -4,7 +4,7 @@
 import express, { Router } from 'express';
 import cors from 'cors';
 import path from 'path';
-import { servicesRouter, containersRouter, webhookRouter, logsRouter } from './routes';
+import { servicesRouter, containersRouter, webhookRouter, logsRouter, gitRouter } from './routes';
 import { reverseProxy } from './proxy';
 
 export const BASE_PATH = '/node-service-console';
@@ -27,6 +27,7 @@ baseRouter.use('/api/services', servicesRouter);
 baseRouter.use('/api/containers', containersRouter);
 baseRouter.use('/api/webhook', webhookRouter);
 baseRouter.use('/api/logs', logsRouter);
+baseRouter.use('/api/git', gitRouter);
 
 /* ── SPA fallback ── */
 baseRouter.get('*', (_req, res) => {

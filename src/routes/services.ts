@@ -26,6 +26,8 @@ router.post('/', (req: Request, res: Response) => {
   if (!name || !name.trim())
     return res.status(400).json({ message: '服务名称不能为空' });
   const result = createService({ name: name.trim() });
+  if ('error' in result && result.error === 'invalid-name')
+    return res.status(400).json({ message: '服务名称只能包含字母、数字、连字符和下划线，长度 2-50' });
   if ('error' in result && result.error === 'name-duplicate')
     return res.status(400).json({ message: '服务名称已存在，请使用其他名称' });
   return res.status(201).json({ data: result });

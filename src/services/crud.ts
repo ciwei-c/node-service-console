@@ -7,13 +7,20 @@ import { dockerRemoveAll } from '../docker';
 import { addLog } from './logs';
 import type { Service, ErrorResult } from '../types';
 
+/** 校验服务名称：仅允许字母、数字、连字符、下划线，2-50 字符 */
+const SERVICE_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{1,49}$/;
+
 export function listServices(): Service[] {
   return readStore().services;
 }
 
 export function createService(payload: { name: string }): Service | ErrorResult {
   const store = readStore();
-  const exists = store.services.find((s) => s.name === payload.name);
+  const name = payload.name?.trim();
+  if (!name || !SERVICE_NAME_RE.test(name)) {
+    return { error: 'invalid-name' };
+  }
+  const exists = store.services.find((s) => s.name === name);
   if (exists) return { error: 'name-duplicate' };
 
   const now = new Date().toISOString();
