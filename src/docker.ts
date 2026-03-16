@@ -6,7 +6,7 @@ import { promisify } from 'util';
 import net from 'net';
 import path from 'path';
 import fs from 'fs';
-import type { Service, ExecResult, DockerOpResult, CleanupResult, ContainerInfo } from './types';
+import type { Service, ExecResult, DockerOpResult, ContainerInfo } from './types';
 
 const execAsync = promisify(exec);
 
@@ -141,12 +141,19 @@ export async function dockerPublish(service: Service, version: string, onLog?: (
   }
   const safeUrl = repoUrl.replace(/\/\/[^@]+@/, '//***@');
   log(`[clone] ${safeUrl} branch=${p.branch}`);
-  const cloneRes = await runAsync(`git clone --depth 1 --branch ${p.branch} ${repoUrl} "${workDir}"`);
+  const cloneRes = await runAsync(`git clone --branch ${p.branch} ${repoUrl} "${workDir}"`);
   if (!cloneRes.ok) {
     log(`[clone] FAILED: ${cloneRes.output}`);
     return { ok: false, logs };
   }
   log('[clone] OK');
+
+  // 获取 commit 信息
+  const commitHashRes = run(`git -C "${workDir}" log -1 --format=%H`);
+  const commitMsgRes = run(`git -C "${workDir}" log -1 --format=%s`);
+  const commitHash = commitHashRes.ok ? commitHashRes.output.trim() : '';
+  const commitMessage = commitMsgRes.ok ? commitMsgRes.output.trim() : '';
+  if (commitHash) log(`[commit] ${commitHash.slice(0, 8)} ${commitMessage}`);
 
   // 3. docker build
   const buildContext = p.targetDir && p.targetDir !== '/'
@@ -205,35 +212,105 @@ export async function dockerPublish(service: Service, version: string, onLog?: (
   // 8. 清理 tmp
   fs.rmSync(workDir, { recursive: true, force: true });
 
-  return { ok: true, logs, hostPort };
+  return { ok: true, logs, hostPort, commitHash, commitMessage };
 }
 
-/* ── 回退 ── */
+/* ── 根据 commit 重新构建（用于回退） ── */
 
-export async function dockerRollback(service: Service, targetVersion: string): Promise<DockerOpResult> {
+export async function dockerRebuildFromCommit(
+  service: Service,
+  targetVersion: string,
+  commitHash: string,
+  onLog?: (line: string) => void,
+): Promise<DockerOpResult> {
   const logs: string[] = [];
+  const log = (line: string) => { logs.push(line); onLog?.(line); };
   const p = service.pipeline;
   const cn = containerName(service.name);
   const img = imageName(service.name, targetVersion);
+  const workDir = path.join(__dirname, '..', 'tmp', service.name);
 
-  const check = run(`docker image inspect ${img}`);
-  if (!check.ok) {
-    logs.push(`[rollback] 镜像 ${img} 不存在，无法回退`);
-    return { ok: false, logs };
+  // 1. 准备工作目录
+  if (fs.existsSync(workDir)) fs.rmSync(workDir, { recursive: true, force: true });
+  fs.mkdirSync(workDir, { recursive: true });
+
+  // 2. 拉取代码（完整历史以便 checkout 指定 commit）
+  const authMode = p.authMode || 'ssh';
+  const token = p.gitToken || '';
+  const repo = p.repository
+    .replace(/^https?:\/\/[^/]+\//, '')
+    .replace(/^git@[^:]+:/, '')
+    .replace(/\.git$/, '');
+  let repoUrl: string;
+
+  if (authMode === 'ssh') {
+    repoUrl = p.codeSource === 'github'
+      ? `git@github.com:${repo}.git`
+      : `git@gitlab.com:${repo}.git`;
+  } else {
+    if (p.codeSource === 'github') {
+      repoUrl = token ? `https://${token}@github.com/${repo}.git` : `https://github.com/${repo}.git`;
+    } else {
+      repoUrl = token ? `https://oauth2:${token}@gitlab.com/${repo}.git` : `https://gitlab.com/${repo}.git`;
+    }
   }
 
-  run(`docker stop ${cn}`);
-  run(`docker rm -f ${cn}`);
-  logs.push('[rollback] 旧容器已移除');
+  const safeUrl = repoUrl.replace(/\/\/[^@]+@/, '//***@');
+  log(`[clone] ${safeUrl} (回退到 commit ${commitHash.slice(0, 8)})`);
+  const cloneRes = await runAsync(`git clone ${repoUrl} "${workDir}"`);
+  if (!cloneRes.ok) {
+    log(`[clone] FAILED: ${cloneRes.output}`);
+    return { ok: false, logs };
+  }
+  log('[clone] OK');
 
+  // 3. checkout 到指定 commit
+  log(`[checkout] ${commitHash}`);
+  const checkoutRes = run(`git -C "${workDir}" checkout ${commitHash}`);
+  if (!checkoutRes.ok) {
+    log(`[checkout] FAILED: ${checkoutRes.output}`);
+    fs.rmSync(workDir, { recursive: true, force: true });
+    return { ok: false, logs };
+  }
+  log('[checkout] OK');
+
+  // 4. docker build
+  const buildContext = p.targetDir && p.targetDir !== '/'
+    ? path.join(workDir, p.targetDir.replace(/^\/+/, ''))
+    : workDir;
+  const dockerfilePath = path.join(buildContext, p.dockerfile || 'Dockerfile');
+  log(`[build] image=${img} dockerfile=${p.dockerfile} context=${p.targetDir || '/'}`);
+  log(`[build] 开始构建镜像...`);
+  const buildRes = await runAsync(`docker build -t ${img} -f "${dockerfilePath}" "${buildContext}"`);
+  if (buildRes.output) {
+    for (const line of buildRes.output.split('\n')) {
+      if (line.trim()) log(`[build] ${line}`);
+    }
+  }
+  if (!buildRes.ok) {
+    log('[build] FAILED');
+    fs.rmSync(workDir, { recursive: true, force: true });
+    return { ok: false, logs };
+  }
+  log('[build] OK');
+
+  // 5. 停止并移除旧容器
+  log('[stop-old] 停止旧容器...');
+  await runAsync(`docker stop ${cn}`);
+  await runAsync(`docker rm -f ${cn}`);
+  log('[stop-old] done');
+
+  // 6. 组装环境变量
   const envArgs = (service.envVars || [])
     .filter((v) => v.key)
     .map((v) => `-e "${v.key}=${v.value}"`)
     .join(' ');
 
+  // 7. 自动分配宿主机端口
   const hostPort = await allocateHostPort(service.hostPort);
-  logs.push(`[rollback] 宿主机端口: ${hostPort} → 容器端口: ${p.port}`);
+  log(`[port] 宿主机端口: ${hostPort} → 容器端口: ${p.port}`);
 
+  // 8. docker run
   const runCmd = [
     'docker run -d',
     `--name ${cn}`,
@@ -243,14 +320,19 @@ export async function dockerRollback(service: Service, targetVersion: string): P
     img,
   ].filter(Boolean).join(' ');
 
-  logs.push(`[rollback] ${runCmd}`);
-  const runRes = run(runCmd);
+  log(`[run] ${runCmd}`);
+  const runRes = await runAsync(runCmd);
   if (!runRes.ok) {
-    logs.push(`[rollback] FAILED: ${runRes.output}`);
+    log(`[run] FAILED: ${runRes.output}`);
+    fs.rmSync(workDir, { recursive: true, force: true });
     return { ok: false, logs };
   }
-  logs.push(`[rollback] 已回退到 ${targetVersion}`);
-  return { ok: true, logs, hostPort };
+  log(`[run] container=${cn} started`);
+
+  // 9. 清理 tmp
+  fs.rmSync(workDir, { recursive: true, force: true });
+
+  return { ok: true, logs, hostPort, commitHash, commitMessage: '' };
 }
 
 /* ── 停止 / 启动 ── */
@@ -265,22 +347,10 @@ export function dockerStart(serviceName: string): ExecResult {
 
 /* ── 镜像清理 ── */
 
-export function dockerCleanupImages(
-  serviceName: string,
-  allVersions: string[],
-  keepCount = 3,
-): CleanupResult {
-  const kept = allVersions.slice(0, keepCount);
-  const toRemove = allVersions.slice(keepCount);
-  const removed: string[] = [];
-
-  for (const ver of toRemove) {
-    const img = imageName(serviceName, ver);
-    const res = run(`docker rmi ${img}`);
-    if (res.ok) removed.push(img);
-  }
-
-  return { removed, kept: kept.map((v) => imageName(serviceName, v)) };
+/** 删除指定版本的镜像，返回是否成功 */
+export function dockerRemoveImage(serviceName: string, version: string): boolean {
+  const img = imageName(serviceName, version);
+  return run(`docker rmi ${img}`).ok;
 }
 
 /** 删除服务的所有容器和镜像 */

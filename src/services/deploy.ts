@@ -3,7 +3,7 @@
  */
 import { v4 as uuidv4 } from 'uuid';
 import { readStore, writeStore } from '../store';
-import { dockerPublish, dockerRollback, dockerCleanupImages } from '../docker';
+import { dockerPublish, dockerRebuildFromCommit, dockerRemoveImage } from '../docker';
 import { addLog } from './logs';
 import { startPublish, addPublishLog, finishPublish, isPublishing } from './publishTracker';
 import type { Service, Deployment, PublishResult, RollbackResult, ErrorResult } from '../types';
@@ -58,6 +58,8 @@ export function publishServiceAsync(
           id: uuidv4(),
           action: 'publish',
           version,
+          commitHash: execResult.commitHash || '',
+          commitMessage: execResult.commitMessage || '',
           note: '',
           publishedAt: now,
           operator: 'system',
@@ -69,19 +71,22 @@ export function publishServiceAsync(
         freshTarget.updatedAt = now;
         writeStore(freshStore);
 
-        const keepCount = freshTarget.pipeline?.keepImageCount ?? 3;
-        const publishVersions = freshTarget.deployments
-          .filter((d) => d.action === 'publish')
+        // 清理旧版本镜像（只保留当前版本）
+        const oldPublishVersions = freshTarget.deployments
+          .filter((d) => d.action === 'publish' && d.version !== version)
           .map((d) => d.version);
-        const cleanup = dockerCleanupImages(freshTarget.name, publishVersions, keepCount);
+        let removedCount = 0;
+        for (const ver of [...new Set(oldPublishVersions)]) {
+          if (dockerRemoveImage(freshTarget.name, ver)) removedCount++;
+        }
 
-        addPublishLog(serviceId, `[完成] 发布成功，版本 ${version}，清理 ${cleanup.removed.length} 个旧镜像`);
+        addPublishLog(serviceId, `[完成] 发布成功，版本 ${version}，清理 ${removedCount} 个旧镜像`);
         addLog({
           action: 'publish',
           serviceName: freshTarget.name,
           success: true,
           version,
-          detail: `发布成功，版本 ${version}，清理 ${cleanup.removed.length} 个旧镜像`,
+          detail: `发布成功，版本 ${version}，清理 ${removedCount} 个旧镜像`,
         });
       }
 
@@ -111,11 +116,15 @@ export async function rollbackService(
   if (!target) return null;
 
   const targetVersion = payload.targetVersion?.trim();
-  const historical = target.deployments.find((d) => d.version === targetVersion);
+  const historical = target.deployments.find((d) => d.version === targetVersion && d.action === 'publish');
   if (!historical) return { error: 'target-version-not-found' };
 
-  // Docker 回退
-  const execResult = await dockerRollback(target, targetVersion);
+  if (!historical.commitHash) {
+    return { error: 'commit-hash-missing', logs: ['该版本没有记录 commit hash，无法回退'] };
+  }
+
+  // 使用 commit hash 重新克隆代码并构建
+  const execResult = await dockerRebuildFromCommit(target, targetVersion, historical.commitHash);
   if (!execResult.ok) {
     addLog({
       action: 'rollback',
@@ -127,31 +136,47 @@ export async function rollbackService(
     return { error: 'docker-failed', logs: execResult.logs };
   }
 
+  // 找到目标版本在部署记录中的位置，删除其后的所有记录
+  // deployments 按时间倒序排列（index 0 = 最新），所以目标版本之前的 index 都是"更新"的记录
+  const freshStore = readStore();
+  const freshTarget = freshStore.services.find((s) => s.id === serviceId);
+  if (!freshTarget) return null;
+
+  const targetIdx = freshTarget.deployments.findIndex((d) => d.id === historical.id);
+  if (targetIdx > 0) {
+    // 收集要删除的版本（用于清理 docker 镜像）
+    const removedDeps = freshTarget.deployments.slice(0, targetIdx);
+    const removedPublishVersions = removedDeps
+      .filter((d) => d.action === 'publish')
+      .map((d) => d.version);
+
+    // 删除目标版本之后的所有记录
+    freshTarget.deployments.splice(0, targetIdx);
+
+    // 清理已删除版本的 docker 镜像
+    for (const ver of removedPublishVersions) {
+      if (ver !== targetVersion) {
+        dockerRemoveImage(freshTarget.name, ver);
+      }
+    }
+  }
+
   const now = new Date().toISOString();
-  const record: Deployment = {
-    id: uuidv4(),
-    action: 'rollback',
-    version: targetVersion,
-    note: payload.note || '',
-    publishedAt: now,
-    operator: payload.operator || 'system',
-  };
-  target.deployments.unshift(record);
-  target.currentVersion = targetVersion;
-  target.status = 'running';
-  target.hostPort = execResult.hostPort;
-  target.updatedAt = now;
-  writeStore(store);
+  freshTarget.currentVersion = targetVersion;
+  freshTarget.status = 'running';
+  freshTarget.hostPort = execResult.hostPort;
+  freshTarget.updatedAt = now;
+  writeStore(freshStore);
 
   addLog({
     action: 'rollback',
-    serviceName: target.name,
+    serviceName: freshTarget.name,
     success: true,
     version: targetVersion,
-    detail: `回退成功，目标版本 ${targetVersion}`,
+    detail: `回退成功，目标版本 ${targetVersion}（commit ${historical.commitHash.slice(0, 8)}），已清理后续版本`,
   });
 
-  return { service: target, record, logs: execResult.logs };
+  return { service: freshTarget, record: historical, logs: execResult.logs };
 }
 
 export function deleteDeployment(

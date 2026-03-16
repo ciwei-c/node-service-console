@@ -86,7 +86,6 @@ export function updateServicePipeline(serviceId: string, p: Partial<Pipeline>): 
     port: Number(p.port) || 3000,
     dockerfile: p.dockerfile || 'Dockerfile',
     accessPath: p.accessPath || '/' + target.name,
-    keepImageCount: Number(p.keepImageCount) || 3,
     authMode: p.authMode || 'ssh',
     gitToken:
       p.gitToken && !p.gitToken.startsWith('****')

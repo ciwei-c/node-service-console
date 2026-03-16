@@ -13,7 +13,6 @@ export interface Pipeline {
   port: number;
   dockerfile: string;
   accessPath: string;
-  keepImageCount: number;
   authMode: 'ssh' | 'token';
   gitToken: string;
 }
@@ -22,6 +21,8 @@ export interface Deployment {
   id: string;
   action: 'publish' | 'rollback';
   version: string;
+  commitHash: string;
+  commitMessage: string;
   note: string;
   publishedAt: string;
   operator: string;
@@ -59,11 +60,10 @@ export interface DockerOpResult {
   logs: string[];
   /** 实际分配的宿主机端口 */
   hostPort?: number;
-}
-
-export interface CleanupResult {
-  removed: string[];
-  kept: string[];
+  /** 本次构建对应的 Git commit hash */
+  commitHash?: string;
+  /** 本次构建对应的 Git commit message */
+  commitMessage?: string;
 }
 
 export interface ContainerInfo {
@@ -80,7 +80,6 @@ export interface PublishResult {
   service: Service;
   record: Deployment;
   logs: string[];
-  cleanup: CleanupResult;
 }
 
 export interface RollbackResult {

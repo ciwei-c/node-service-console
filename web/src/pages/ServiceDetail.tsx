@@ -236,8 +236,12 @@ export default function ServiceDetail() {
   };
 
   /* ── unique versions for rollback (排除当前版本) ── */
-  const versions = [...new Set(svc.deployments.map((d) => d.version))]
-    .filter((v) => v !== svc.currentVersion);
+  const rollbackVersions = svc.deployments
+    .filter((d) => d.action === 'publish' && d.version !== svc.currentVersion)
+    .reduce<Deployment[]>((acc, d) => {
+      if (!acc.find((x) => x.version === d.version)) acc.push(d);
+      return acc;
+    }, []);
 
   /* ── table columns ── */
   const columns = [
@@ -248,6 +252,22 @@ export default function ServiceDetail() {
         : <Tag color="gold">回退</Tag>,
     },
     { title: '版本', dataIndex: 'version', width: 120 },
+    {
+      title: 'Commit', dataIndex: 'commitHash', width: 200,
+      render: (_: unknown, rec: Deployment) => {
+        if (!rec.commitHash) return <Text type="secondary">-</Text>;
+        return (
+          <span title={rec.commitHash}>
+            <Text code style={{ fontSize: 12 }}>{rec.commitHash.slice(0, 8)}</Text>
+            {rec.commitMessage && (
+              <Text type="secondary" style={{ marginLeft: 4, fontSize: 12 }} ellipsis={{ tooltip: rec.commitMessage }}>
+                {rec.commitMessage.length > 20 ? rec.commitMessage.slice(0, 20) + '...' : rec.commitMessage}
+              </Text>
+            )}
+          </span>
+        );
+      },
+    },
     { title: '操作人', dataIndex: 'operator', width: 100 },
     { title: '备注', dataIndex: 'note', ellipsis: true, width: 120 },
     {
@@ -433,7 +453,7 @@ export default function ServiceDetail() {
       {/* 流水线 */}
       <Card title="流水线配置" size="small">
         <Form form={pipeForm} layout="vertical" onFinish={handleSavePipeline}
-          initialValues={{ codeSource: 'github', branch: 'main', targetDir: '/opt/app', port: 3000, dockerfile: 'Dockerfile', accessPath: '/' + svc.name, keepImageCount: 3, authMode: 'ssh', gitToken: '' }}
+          initialValues={{ codeSource: 'github', branch: 'main', targetDir: '/opt/app', port: 3000, dockerfile: 'Dockerfile', accessPath: '/' + svc.name, authMode: 'ssh', gitToken: '' }}
         >
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 24px' }}>
             <Form.Item name="codeSource" label="代码源" rules={[{ required: true }]}>
@@ -472,9 +492,6 @@ export default function ServiceDetail() {
             </Form.Item>
             <Form.Item name="accessPath" label="访问路径" tooltip="部署后的反向代理前缀，用于区分不同服务">
               <Input placeholder="/order-api" />
-            </Form.Item>
-            <Form.Item name="keepImageCount" label="保留镜像数" tooltip="发布时自动清理旧镜像，只保留最近 N 个版本的镜像">
-              <InputNumber placeholder="3" style={{ width: '100%' }} min={1} max={100} />
             </Form.Item>
           </div>
           <Form.Item>
@@ -543,9 +560,17 @@ export default function ServiceDetail() {
         onCancel={() => { setRbOpen(false); rbForm.resetFields(); }}
         okText="回退" cancelText="取消"
       >
+        <Alert
+          type="warning"
+          message="回退操作将根据目标版本的 commit 重新构建，并删除该版本之后的所有部署记录。"
+          style={{ marginBottom: 12 }}
+        />
         <Form form={rbForm} layout="vertical" style={{ marginTop: 12 }}>
           <Form.Item name="targetVersion" label="选择历史版本" rules={[{ required: true, message: '请选择版本' }]}>
-            <Select placeholder="请选择" options={versions.map((v) => ({ value: v, label: v }))} />
+            <Select placeholder="请选择" options={rollbackVersions.map((d) => ({
+              value: d.version,
+              label: `${d.version}${d.commitHash ? ` (${d.commitHash.slice(0, 8)})` : ''}`,
+            }))} />
           </Form.Item>
           <Form.Item name="operator" label="操作人">
             <Input placeholder="devops" />
@@ -566,6 +591,12 @@ export default function ServiceDetail() {
               {selectedDep.action === 'publish' ? <Tag color="blue">发布</Tag> : <Tag color="gold">回退</Tag>}
             </Descriptions.Item>
             <Descriptions.Item label="版本">{selectedDep.version}</Descriptions.Item>
+            <Descriptions.Item label="Commit Hash">
+              {selectedDep.commitHash ? <Text code>{selectedDep.commitHash}</Text> : '-'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Commit Message">
+              {selectedDep.commitMessage || '-'}
+            </Descriptions.Item>
             <Descriptions.Item label="操作人">{selectedDep.operator}</Descriptions.Item>
             <Descriptions.Item label="备注">{selectedDep.note || '-'}</Descriptions.Item>
             <Descriptions.Item label="发布时间">

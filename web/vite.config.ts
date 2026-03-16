@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const BASE_PATH = '/node-service-console';
+const API_PORT = process.env.API_PORT || '3100';
 
 export default defineConfig({
   base: `${BASE_PATH}/`,
@@ -10,8 +11,14 @@ export default defineConfig({
     port: 5173,
     proxy: {
       [`${BASE_PATH}/api`]: {
-        target: 'http://localhost:80',
+        target: `http://localhost:${API_PORT}`,
         changeOrigin: true,
+      },
+      // WebSocket 代理（如有需要）
+      [`${BASE_PATH}/ws`]: {
+        target: `http://localhost:${API_PORT}`,
+        changeOrigin: true,
+        ws: true,
       },
     },
   },

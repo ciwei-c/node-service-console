@@ -4,6 +4,8 @@ export interface Deployment {
   id: string;
   action: 'publish' | 'rollback';
   version: string;
+  commitHash: string;
+  commitMessage: string;
   note: string;
   publishedAt: string;
   operator: string;
@@ -22,7 +24,6 @@ export interface Pipeline {
   port: number;
   dockerfile: string;
   accessPath: string;
-  keepImageCount: number;
   authMode: 'ssh' | 'token';
   gitToken: string;
 }
