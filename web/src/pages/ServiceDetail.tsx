@@ -205,7 +205,13 @@ export default function ServiceDetail() {
     }
   };
 
-  const handleSaveEnv = async () => {
+  /* ── pipeline ── */
+
+  const handleSaveAndDeploy = async () => {
+    // 1. 校验流水线表单
+    const pipeVals = await pipeForm.validateFields() as Pipeline;
+
+    // 2. 收集环境变量
     let vars = envVars;
     if (envJsonMode) {
       try {
@@ -216,23 +222,20 @@ export default function ServiceDetail() {
         }
         vars = Object.entries(obj).map(([key, value]) => ({ key, value: String(value) }));
       } catch {
-        message.error('JSON 格式错误，无法保存');
+        message.error('环境变量 JSON 格式错误，无法保存');
         return;
       }
     }
     const filtered = vars.filter((v) => v.key.trim());
+
+    // 3. 保存环境变量 + 流水线配置
     await updateEnvVars(svc.id, filtered);
-    message.success('环境变量已保存');
-    load();
-  };
+    await updatePipeline(svc.id, pipeVals);
+    message.success('配置已保存，开始发布...');
 
-  /* ── pipeline ── */
-
-  const handleSavePipeline = async () => {
-    const vals = await pipeForm.validateFields() as Pipeline;
-    await updatePipeline(svc.id, vals);
-    message.success('流水线配置已保存');
-    load();
+    // 4. 刷新数据后自动触发发布
+    await load();
+    handlePublish();
   };
 
   /* ── unique versions for rollback (排除当前版本) ── */
@@ -242,6 +245,14 @@ export default function ServiceDetail() {
       if (!acc.find((x) => x.version === d.version)) acc.push(d);
       return acc;
     }, []);
+
+  /* ── next version number ── */
+  const nextVersionNum = svc.deployments
+    .filter((d: Deployment) => d.action === 'publish')
+    .reduce((max: number, d: Deployment) => {
+      const match = d.version.match(/-(\d+)$/);
+      return match ? Math.max(max, parseInt(match[1], 10)) : max;
+    }, svc.deployments.filter((d: Deployment) => d.action === 'publish').length) + 1;
 
   /* ── table columns ── */
   const columns = [
@@ -308,7 +319,7 @@ export default function ServiceDetail() {
         <Popconfirm
           title="确认发布新版本？"
           description={<>
-            <div>版本号将自动生成：<strong>{svc.name}-{(svc.deployments.filter((d: Deployment) => d.action === 'publish').length) + 1}</strong></div>
+            <div>版本号将自动生成：<strong>{svc.name}-{nextVersionNum}</strong></div>
             <div style={{marginTop:4,color:'#8c8c8c',fontSize:12}}>流水线：{svc.pipeline?.codeSource} / {svc.pipeline?.repository || '-'} / {svc.pipeline?.branch}</div>
           </>}
           onConfirm={handlePublish}
@@ -443,16 +454,11 @@ export default function ServiceDetail() {
             </Button>
           </div>
         )}
-        <div style={{ marginTop: 12 }}>
-          <Button type="primary" icon={<SaveOutlined />} onClick={handleSaveEnv}>
-            保存环境变量
-          </Button>
-        </div>
       </Card>
 
       {/* 流水线 */}
       <Card title="流水线配置" size="small">
-        <Form form={pipeForm} layout="vertical" onFinish={handleSavePipeline}
+        <Form form={pipeForm} layout="vertical"
           initialValues={{ codeSource: 'github', branch: 'main', targetDir: '/opt/app', port: 3000, dockerfile: 'Dockerfile', accessPath: '/' + svc.name, authMode: 'ssh', gitToken: '' }}
         >
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 24px' }}>
@@ -494,13 +500,23 @@ export default function ServiceDetail() {
               <Input placeholder="/order-api" />
             </Form.Item>
           </div>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" icon={<SaveOutlined />}>
-              保存流水线配置
-            </Button>
-          </Form.Item>
         </Form>
       </Card>
+
+      {/* 统一保存并部署 */}
+      <div style={{ marginTop: 20, textAlign: 'right' }}>
+        <Popconfirm
+          title="保存配置并发布新版本？"
+          description="将保存环境变量和流水线配置，然后自动触发部署流程。"
+          onConfirm={handleSaveAndDeploy}
+          okText="保存并部署"
+          cancelText="取消"
+        >
+          <Button type="primary" size="large" icon={<RocketOutlined />} loading={publishing}>
+            保存并部署
+          </Button>
+        </Popconfirm>
+      </div>
     </div>
   );
 

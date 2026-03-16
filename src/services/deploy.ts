@@ -25,7 +25,14 @@ export function publishServiceAsync(
   }
 
   const publishCount = target.deployments.filter((d) => d.action === 'publish').length;
-  const version = `${target.name}-${publishCount + 1}`;
+  // 从历史记录中提取最大版本号，避免回退删除记录后版本号重复
+  const maxVersionNum = target.deployments
+    .filter((d) => d.action === 'publish')
+    .reduce((max, d) => {
+      const match = d.version.match(/-(\d+)$/);
+      return match ? Math.max(max, parseInt(match[1], 10)) : max;
+    }, publishCount);
+  const version = `${target.name}-${maxVersionNum + 1}`;
 
   // 启动追踪器
   startPublish(serviceId, target.name, version);
