@@ -73,22 +73,25 @@ router.post('/', (req: Request, res: Response) => {
     : `Webhook: ${repoFullName}@${branch}`;
 
   const results = matched.map((svc) => {
-    // 强制模式：如果有正在进行的发布，中止它
-    const result = publishServiceAsync(svc.id, { force: true });
+    const result = publishServiceAsync(svc.id);
     const success = result !== null && !('error' in result);
     const ver = result && !('error' in result) ? result.version : undefined;
+    const skipped = result && 'error' in result && result.error === 'already-publishing';
 
-    addLog({
-      action: 'webhook',
-      serviceName: svc.name,
-      success,
-      version: ver,
-      detail: `${webhookNote}${success ? ` → ${ver}（构建中）` : ' → 失败'}`,
-    });
+    if (!skipped) {
+      addLog({
+        action: 'webhook',
+        serviceName: svc.name,
+        success,
+        version: ver,
+        detail: `${webhookNote}${success ? ` → ${ver}（构建中）` : ' → 失败'}`,
+      });
+    }
 
     return {
       service: svc.name,
       success,
+      skipped,
       version: ver,
       error: result && 'error' in result ? result.error : undefined,
     };
