@@ -77,34 +77,33 @@ export default function ServiceDetail() {
     sseCloseRef.current = null;
   }, []);
 
-  useEffect(() => () => closeSse(), [closeSse]);
+  /* ── 始终保持 SSE 连接，实时感知任何发布（包括 Webhook 触发的） ── */
+  useEffect(() => {
+    if (!svc) return;
 
-  const subscribeSse = useCallback((serviceId: string) => {
     closeSse();
-    sseCloseRef.current = subscribePublishEvents(serviceId, {
+    sseCloseRef.current = subscribePublishEvents(svc.id, {
       onStatus: (status) => {
         setPublishStatus(status);
         setPublishLogs(status.logs);
         if (status.status === 'publishing') {
           setPublishing(true);
+          setPublishLogOpen(true);
         } else if (status.status === 'aborted') {
-          // 被新发布中止 → 重新订阅以跟踪新发布
+          // 被新发布中止 → 等待新发布的 status 事件自动推送过来
           message.info('当前构建已被新的 Webhook 发布中止');
           setPublishLogs([]);
           setPublishStatus(null);
-          setTimeout(() => subscribeSse(serviceId), 500);
         } else if (status.status === 'stopped') {
           setPublishing(false);
-          closeSse();
-          message.info('发布已手动停止');
+          message.info(status.action === 'rollback' ? '回退已手动停止' : '发布已手动停止');
           load();
         } else {
           setPublishing(false);
-          closeSse();
           if (status.status === 'success') {
-            message.success('发布成功');
+            message.success(status.action === 'rollback' ? '回退成功' : '发布成功');
           } else {
-            message.error('发布失败');
+            message.error(status.action === 'rollback' ? '回退失败' : '发布失败');
           }
           load();
         }
@@ -116,29 +115,8 @@ export default function ServiceDetail() {
         }
       },
     });
-  }, [closeSse, load]);
 
-  /* ── 页面加载时检查是否有进行中的发布 ── */
-  useEffect(() => {
-    if (!svc) return;
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const status = await fetchPublishStatus(svc.id);
-        if (cancelled) return;
-        if (status) {
-          setPublishStatus(status);
-          setPublishLogs(status.logs);
-          if (status.status === 'publishing') {
-            setPublishing(true);
-            subscribeSse(svc.id);
-          }
-        }
-      } catch { /* ignore */ }
-    })();
-
-    return () => { cancelled = true; };
+    return () => closeSse();
   }, [svc?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!svc) return null;
@@ -154,12 +132,11 @@ export default function ServiceDetail() {
       setPublishLogs([]);
       setPublishLogOpen(true);
       await publishService(svc.id);
-      subscribeSse(svc.id);
+      // SSE 连接已始终保持，新发布的 status 事件会自动推送过来
     } catch (err: any) {
       setPublishing(false);
       if (err.message?.includes('正在发布中')) {
         setPublishing(true);
-        subscribeSse(svc.id);
       } else {
         message.error(err.message || '发布失败');
         setPublishLogOpen(false);
@@ -178,27 +155,19 @@ export default function ServiceDetail() {
   const handleRollback = async () => {
     const vals = await rbForm.validateFields();
     try {
-      await rollbackService(svc.id, vals);
-      message.success('回退成功');
-      rbForm.resetFields();
+      setPublishing(true);
+      setPublishStatus(null);
+      setPublishLogs([]);
       setRbOpen(false);
+      rbForm.resetFields();
+      setPublishLogOpen(true);
+      await rollbackService(svc.id, vals);
+      // SSE 连接已始终保持，回退的 status 事件会自动推送过来
     } catch (err: any) {
-      Modal.error({
-        title: '回退失败',
-        content: (
-          <div>
-            <p>{err.message}</p>
-            <Alert type="error" message="执行日志" description={
-              <pre style={{ maxHeight: 300, overflow: 'auto', fontSize: 12 }}>
-                {err.logs?.join('\n') || '无日志'}
-              </pre>
-            } />
-          </div>
-        ),
-        width: 600,
-      });
+      setPublishing(false);
+      setPublishLogOpen(false);
+      message.error(err.message || '回退失败');
     }
-    load();
   };
 
   const handleDeleteDep = async (depId: string) => {
@@ -379,7 +348,10 @@ export default function ServiceDetail() {
           icon={<LoadingOutlined />}
           message={
             <Space>
-              <span>正在发布 <strong>{publishStatus?.version || '...'}</strong></span>
+              <span>
+                {publishStatus?.action === 'rollback' ? '正在回退到' : '正在发布'}{' '}
+                <strong>{publishStatus?.version || '...'}</strong>
+              </span>
               <Button type="link" size="small" onClick={() => setPublishLogOpen(true)}>
                 查看日志
               </Button>
@@ -392,7 +364,7 @@ export default function ServiceDetail() {
                 okButtonProps={{ danger: true }}
               >
                 <Button type="link" size="small" danger icon={<StopOutlined />}>
-                  停止发布
+                  {publishStatus?.action === 'rollback' ? '停止回退' : '停止发布'}
                 </Button>
               </Popconfirm>
             </Space>
@@ -412,17 +384,23 @@ export default function ServiceDetail() {
           okText="确认发布"
           cancelText="取消"
         >
-          <Button type="primary" icon={<RocketOutlined />} loading={publishing}>发布</Button>
+          <Button type="primary" icon={<RocketOutlined />}
+            loading={publishing && publishStatus?.action !== 'rollback'}
+            disabled={publishing && publishStatus?.action === 'rollback'}
+          >发布</Button>
         </Popconfirm>
         {(publishing || publishStatus) && (
           <Button
             icon={<CodeOutlined />}
             onClick={() => setPublishLogOpen(true)}
           >
-            发布日志
+            {publishStatus?.action === 'rollback' ? '回退日志' : '发布日志'}
           </Button>
         )}
-        <Button icon={<RollbackOutlined />} onClick={() => setRbOpen(true)}>
+        <Button icon={<RollbackOutlined />} onClick={() => setRbOpen(true)}
+          loading={publishing && publishStatus?.action === 'rollback'}
+          disabled={publishing && publishStatus?.action !== 'rollback'}
+        >
           回退
         </Button>
         <Text type="secondary" style={{ marginLeft: 8 }}>
@@ -712,14 +690,14 @@ export default function ServiceDetail() {
         )}
       </Modal>
 
-      {/* ── 发布日志面板 ── */}
+      {/* ── 构建日志面板 ── */}
       <Drawer
         title={
           <Space>
-            <span>发布日志</span>
+            <span>{publishStatus?.action === 'rollback' ? '回退日志' : '发布日志'}</span>
             {publishStatus?.status === 'publishing' && <Tag icon={<LoadingOutlined />} color="processing">构建中</Tag>}
-            {publishStatus?.status === 'success' && <Tag icon={<CheckCircleOutlined />} color="success">发布成功</Tag>}
-            {publishStatus?.status === 'failed' && <Tag icon={<CloseCircleOutlined />} color="error">发布失败</Tag>}
+            {publishStatus?.status === 'success' && <Tag icon={<CheckCircleOutlined />} color="success">{publishStatus?.action === 'rollback' ? '回退成功' : '发布成功'}</Tag>}
+            {publishStatus?.status === 'failed' && <Tag icon={<CloseCircleOutlined />} color="error">{publishStatus?.action === 'rollback' ? '回退失败' : '发布失败'}</Tag>}
             {publishStatus?.status === 'aborted' && <Tag color="orange">已中止</Tag>}
             {publishStatus?.status === 'stopped' && <Tag color="red">已停止</Tag>}
           </Space>

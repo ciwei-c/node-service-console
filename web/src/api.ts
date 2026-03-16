@@ -100,6 +100,7 @@ export interface PublishStatus {
   serviceName: string;
   version: string;
   status: 'publishing' | 'success' | 'failed' | 'aborted' | 'stopped';
+  action: 'publish' | 'rollback';
   logs: string[];
   startedAt: string;
   finishedAt?: string;

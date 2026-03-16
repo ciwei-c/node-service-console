@@ -6,7 +6,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import {
   listServices, createService, getServiceById, getServiceByName, deleteService,
-  publishServiceAsync, rollbackService, deleteDeployment, stopServicePublish,
+  publishServiceAsync, rollbackServiceAsync, deleteDeployment, stopServicePublish,
   stopService, startService, updateServiceEnvVars, updateServicePipeline,
   getPublishStatus, isPublishing, addSseClient,
 } from '../services';
@@ -105,13 +105,15 @@ router.post('/:id/rollback', async (req: Request<{ id: string }>, res: Response)
   const { targetVersion, note, operator } = req.body;
   if (!targetVersion || !targetVersion.trim())
     return res.status(400).json({ message: '回退目标版本不能为空' });
-  const result = await rollbackService(req.params.id, { targetVersion: targetVersion.trim(), note, operator });
+  const result = rollbackServiceAsync(req.params.id, { targetVersion: targetVersion.trim(), note, operator });
   if (!result) return res.status(404).json({ message: '服务不存在' });
   if ('error' in result) {
+    if (result.error === 'already-publishing')
+      return res.status(409).json({ message: '当前有发布正在进行中，无法回退' });
     if (result.error === 'target-version-not-found')
       return res.status(400).json({ message: '历史版本不存在，无法回退' });
-    if (result.error === 'docker-failed')
-      return res.status(500).json({ message: 'Docker 回退失败，镜像可能已被清理', logs: (result as ErrorResult).logs });
+    if (result.error === 'commit-hash-missing')
+      return res.status(400).json({ message: '该版本没有记录 commit hash，无法回退' });
   }
   return res.json({ data: result });
 });

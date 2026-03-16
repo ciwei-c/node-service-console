@@ -164,6 +164,111 @@ export function publishServiceAsync(
   return { version };
 }
 
+/**
+ * 启动回退（fire-and-forget）
+ * 返回版本号后立即返回，实际构建在后台执行。
+ * 前端通过 SSE 实时查看进度。
+ */
+export function rollbackServiceAsync(
+  serviceId: string,
+  payload: { targetVersion: string; note?: string; operator?: string },
+): { version: string } | ErrorResult | null {
+  const store = readStore();
+  const target = store.services.find((s) => s.id === serviceId);
+  if (!target) return null;
+
+  if (isPublishing(serviceId)) {
+    return { error: 'already-publishing' };
+  }
+
+  const targetVersion = payload.targetVersion?.trim();
+  const historical = target.deployments.find((d) => d.version === targetVersion && d.action === 'publish');
+  if (!historical) return { error: 'target-version-not-found' };
+
+  if (!historical.commitHash) {
+    return { error: 'commit-hash-missing', logs: ['该版本没有记录 commit hash，无法回退'] };
+  }
+
+  const commitHash = historical.commitHash;
+  const historicalId = historical.id;
+
+  // 启动追踪器（返回 abort signal）
+  const abortSignal = startPublish(serviceId, target.name, targetVersion, 'rollback');
+
+  // 后台执行，不阻塞请求
+  (async () => {
+    try {
+      const execResult = await dockerRebuildFromCommit(target, targetVersion, commitHash, (line) => {
+        addPublishLog(serviceId, line);
+      }, abortSignal);
+
+      if (abortSignal.aborted) return;
+
+      if (!execResult.ok) {
+        finishPublish(serviceId, false);
+        addLog({
+          action: 'rollback',
+          serviceName: target.name,
+          success: false,
+          version: targetVersion,
+          detail: `回退失败: ${execResult.logs.join(' | ')}`,
+        });
+        return;
+      }
+
+      // 成功：更新 store
+      const freshStore = readStore();
+      const freshTarget = freshStore.services.find((s) => s.id === serviceId);
+      if (!freshTarget) return;
+
+      const targetIdx = freshTarget.deployments.findIndex((d) => d.id === historicalId);
+      if (targetIdx > 0) {
+        const removedDeps = freshTarget.deployments.slice(0, targetIdx);
+        const removedPublishVersions = removedDeps
+          .filter((d) => d.action === 'publish')
+          .map((d) => d.version);
+        freshTarget.deployments.splice(0, targetIdx);
+        for (const ver of removedPublishVersions) {
+          if (ver !== targetVersion) {
+            dockerRemoveImage(freshTarget.name, ver);
+          }
+        }
+      }
+
+      const now = new Date().toISOString();
+      freshTarget.currentVersion = targetVersion;
+      freshTarget.status = 'running';
+      freshTarget.hostPort = execResult.hostPort;
+      freshTarget.updatedAt = now;
+      writeStore(freshStore);
+
+      addPublishLog(serviceId, `[完成] 回退成功，版本 ${targetVersion}`);
+      addLog({
+        action: 'rollback',
+        serviceName: freshTarget.name,
+        success: true,
+        version: targetVersion,
+        detail: `回退成功，目标版本 ${targetVersion}（commit ${commitHash.slice(0, 8)}），已清理后续版本`,
+      });
+
+      finishPublish(serviceId, true);
+    } catch (err: any) {
+      if (abortSignal.aborted) return;
+      addPublishLog(serviceId, `[异常] ${err.message}`);
+      finishPublish(serviceId, false);
+      addLog({
+        action: 'rollback',
+        serviceName: target.name,
+        success: false,
+        version: targetVersion,
+        detail: `回退异常: ${err.message}`,
+      });
+    }
+  })();
+
+  return { version: targetVersion };
+}
+
 export async function rollbackService(
   serviceId: string,
   payload: { targetVersion: string; note?: string; operator?: string },

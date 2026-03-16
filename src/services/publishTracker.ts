@@ -11,6 +11,7 @@ export interface PublishStatus {
   serviceName: string;
   version: string;
   status: 'publishing' | 'success' | 'failed' | 'aborted' | 'stopped';
+  action: 'publish' | 'rollback';
   logs: string[];
   startedAt: string;
   finishedAt?: string;
@@ -55,7 +56,7 @@ function broadcast(serviceId: string, event: string, data: unknown): void {
 /* ── 发布追踪 ── */
 
 /** 开始追踪发布，返回 AbortSignal 供发布流程检测中止 */
-export function startPublish(serviceId: string, serviceName: string, version: string): AbortSignal {
+export function startPublish(serviceId: string, serviceName: string, version: string, action: 'publish' | 'rollback' = 'publish'): AbortSignal {
   // 中止之前的发布（如果有的话）
   const prevAc = abortMap.get(serviceId);
   if (prevAc) prevAc.abort();
@@ -68,6 +69,7 @@ export function startPublish(serviceId: string, serviceName: string, version: st
     serviceName,
     version,
     status: 'publishing',
+    action,
     logs: [],
     startedAt: new Date().toISOString(),
   };

@@ -241,9 +241,11 @@ export async function dockerRebuildFromCommit(
   targetVersion: string,
   commitHash: string,
   onLog?: (line: string) => void,
+  abortSignal?: AbortSignal,
 ): Promise<DockerOpResult> {
   const logs: string[] = [];
   const log = (line: string) => { logs.push(line); onLog?.(line); };
+  const checkAbort = () => { if (abortSignal?.aborted) throw new Error('ABORTED'); };
   const p = service.pipeline;
   const cn = containerName(service.name);
   const img = imageName(service.name, targetVersion);
@@ -282,6 +284,7 @@ export async function dockerRebuildFromCommit(
     return { ok: false, logs };
   }
   log('[clone] OK');
+  checkAbort();
 
   // 3. checkout 到指定 commit
   log(`[checkout] ${commitHash}`);
@@ -292,6 +295,7 @@ export async function dockerRebuildFromCommit(
     return { ok: false, logs };
   }
   log('[checkout] OK');
+  checkAbort();
 
   // 获取 commit message
   const commitMsgRes = run(`git -C "${workDir}" log -1 --format=%s`);
@@ -316,6 +320,7 @@ export async function dockerRebuildFromCommit(
     return { ok: false, logs };
   }
   log('[build] OK');
+  checkAbort();
 
   // 5. 停止并移除旧容器
   log('[stop-old] 停止旧容器...');
