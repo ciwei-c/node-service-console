@@ -19,7 +19,7 @@ function getLocalIP(): string {
   return '127.0.0.1';
 }
 
-const port = process.env.PORT || readLocalSettings().server?.port || 80;
+const port = process.env.PORT || readLocalSettings().server?.port || 3000;
 
 /* ── 初始化认证（首次启动生成密码） ── */
 initAuth();
