@@ -7,8 +7,19 @@ set -e
 
 DOMAIN="www.duidui-island.com"
 APP_NAME="node-service-console"
-NGINX_CONF="/etc/nginx/sites-available/$APP_NAME"
-NGINX_ENABLED="/etc/nginx/sites-enabled/$APP_NAME"
+
+# 适配不同发行版的 Nginx 配置路径
+if [ -d /etc/nginx/sites-available ]; then
+  # Debian / Ubuntu
+  NGINX_CONF="/etc/nginx/sites-available/$APP_NAME"
+  NGINX_ENABLED="/etc/nginx/sites-enabled/$APP_NAME"
+  LINK_MODE="sites"
+else
+  # RHEL / CentOS / OpenCloudOS — 使用 conf.d 目录
+  NGINX_CONF="/etc/nginx/conf.d/$APP_NAME.conf"
+  NGINX_ENABLED=""
+  LINK_MODE="confdir"
+fi
 
 echo "========================================="
 echo "  Nginx + SSL 安装脚本"
@@ -23,8 +34,21 @@ fi
 # 1) 安装 Nginx 和 certbot
 echo ""
 echo "1) 安装 Nginx 和 Certbot ..."
-apt-get update -qq
-apt-get install -y nginx certbot python3-certbot-nginx
+if command -v apt-get &>/dev/null; then
+  # Debian / Ubuntu
+  apt-get update -qq
+  apt-get install -y nginx certbot python3-certbot-nginx
+elif command -v dnf &>/dev/null; then
+  # Fedora / OpenCloudOS 9 / RHEL 9+
+  dnf install -y nginx certbot python3-certbot-nginx
+elif command -v yum &>/dev/null; then
+  # CentOS 7/8 / OpenCloudOS 8
+  yum install -y epel-release || true
+  yum install -y nginx certbot python3-certbot-nginx
+else
+  echo "错误：无法识别包管理器，请手动安装 nginx 和 certbot"
+  exit 1
+fi
 
 # 2) 创建 certbot 验证目录
 mkdir -p /var/www/certbot
@@ -62,13 +86,16 @@ map $http_upgrade $connection_upgrade {
 }
 TEMPEOF
 
-# 启用站点，移除默认站点
-ln -sf "$NGINX_CONF" "$NGINX_ENABLED"
-rm -f /etc/nginx/sites-enabled/default
+# 启用站点
+if [ "$LINK_MODE" = "sites" ]; then
+  ln -sf "$NGINX_CONF" "$NGINX_ENABLED"
+  rm -f /etc/nginx/sites-enabled/default
+fi
 
-# 测试并重载 Nginx
+# 测试并启动/重载 Nginx
 nginx -t
-systemctl reload nginx
+systemctl enable nginx
+systemctl start nginx 2>/dev/null || systemctl reload nginx
 
 echo ""
 echo "3) 申请 SSL 证书 ..."
