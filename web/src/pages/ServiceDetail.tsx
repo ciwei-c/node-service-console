@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Typography, Button, Tag, Tabs, Table, Space, Modal, Form, Input, Select,
-  InputNumber, message, Popconfirm, Descriptions, Card, Alert, Switch, Drawer,
+  InputNumber, message, Popconfirm, Descriptions, Card, Alert, Switch, Drawer, Skeleton,
 } from 'antd';
 import {
   ArrowLeftOutlined, RocketOutlined, RollbackOutlined,
@@ -34,7 +34,11 @@ export default function ServiceDetail() {
   const { serviceName } = useParams<{ serviceName: string }>();
   const nav = useNavigate();
   const [svc, setSvc] = useState<Service | null>(null);
-  const { patchService, removeService } = useServiceStore();
+  const { services, patchService, removeService } = useServiceStore();
+
+  // 从缓存中取摘要信息，用于即时渲染头部
+  const decodedName = serviceName ? decodeURIComponent(serviceName) : '';
+  const cached = services.find((s) => s.name === decodedName);
 
   /* modals */
   const [rbOpen, setRbOpen] = useState(false);
@@ -143,7 +147,20 @@ export default function ServiceDetail() {
     return () => closeSse();
   }, [svc?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!svc) return null;
+  if (!svc) {
+    // 数据加载中：使用缓存摘要先渲染头部，其余用骨架屏
+    const previewSt = statusMap[cached?.status ?? 'idle'] ?? statusMap.idle;
+    return (
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => nav('/')}>返回列表</Button>
+          <Title level={4} style={{ margin: 0 }}>{cached?.name || decodedName}</Title>
+          <Tag color={previewSt.color}>{previewSt.label}</Tag>
+        </div>
+        <Skeleton active paragraph={{ rows: 8 }} />
+      </div>
+    );
+  }
 
   const st = statusMap[svc.status] ?? statusMap.idle;
 
