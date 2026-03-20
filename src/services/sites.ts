@@ -7,10 +7,8 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { pipeline } from 'stream/promises';
-import zlib from 'zlib';
 import { v4 as uuidv4 } from 'uuid';
-import { readStore, writeStore, getDataDir } from '../store';
+import { readStore, writeStore } from '../store';
 import type { StaticSite, ErrorResult } from '../types';
 
 /** 站点名称：字母、数字、连字符、下划线，2-50 字符 */
@@ -29,6 +27,46 @@ export function getSitesRoot(): string {
 /** 返回指定站点的文件目录 */
 export function getSiteDir(name: string): string {
   return path.join(getSitesRoot(), name);
+}
+
+/**
+ * 自动修正 index.html —— 注入 <base> 标签 + 将绝对路径转为相对路径
+ *
+ * 大多数前端构建工具（Vite / CRA / Next.js export）默认生成绝对路径：
+ *   <script src="/assets/index-xxx.js">
+ *   <link href="/assets/index-xxx.css">
+ *
+ * 部署在 /web/{name}/ 下时需要改为相对路径 + <base> 标签：
+ *   <base href="/web/{name}/">
+ *   <script src="assets/index-xxx.js">
+ */
+function rewriteIndexHtml(dir: string, accessPath: string): void {
+  const indexPath = path.join(dir, 'index.html');
+  if (!fs.existsSync(indexPath)) return;
+
+  let html = fs.readFileSync(indexPath, 'utf-8');
+
+  // 如果已经有 <base> 标签，不重复处理
+  if (/<base\s/i.test(html)) return;
+
+  const basePath = accessPath.endsWith('/') ? accessPath : accessPath + '/';
+
+  // 1) src="/xxx" 和 href="/xxx" 中的绝对路径转为相对路径
+  //    排除 protocol-relative (//xxx) 和完整 URL (http://)
+  html = html.replace(
+    /((?:src|href|action)\s*=\s*["'])\/(?!\/|[a-zA-Z]+:)/g,
+    '$1',
+  );
+
+  // 2) 在 <head> 中注入 <base> 标签
+  if (/<head[^>]*>/i.test(html)) {
+    html = html.replace(
+      /(<head[^>]*>)/i,
+      `$1\n  <base href="${basePath}">`,
+    );
+  }
+
+  fs.writeFileSync(indexPath, html, 'utf-8');
 }
 
 /* ── CRUD ── */
@@ -148,6 +186,9 @@ export async function deploySite(
       fs.rmdirSync(single);
     }
   }
+
+  // 自动修正 index.html 中的资源路径（注入 <base> + 绝对路径转相对路径）
+  rewriteIndexHtml(dir, site.accessPath);
 
   // 更新站点信息
   const now = new Date().toISOString();
