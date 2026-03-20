@@ -44,8 +44,22 @@ export interface Service {
   pipeline: Pipeline;
 }
 
+/* ── 静态站点 ── */
+
+export interface StaticSite {
+  id: string;
+  name: string;
+  /** 访问路径前缀: /web/{name} */
+  accessPath: string;
+  currentVersion: string;
+  deployedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Store {
   services: Service[];
+  sites: StaticSite[];
 }
 
 export interface LocalSettings {

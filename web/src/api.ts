@@ -199,3 +199,38 @@ export const debugHttp = (serviceId: string, payload: DebugHttpRequest) =>
     method: 'POST',
     body: JSON.stringify(payload),
   });
+
+/* sites (静态站点) */
+import type { StaticSite } from './types';
+
+export const fetchSites = () => request<StaticSite[]>('/sites');
+
+export const createSiteApi = (name: string) =>
+  request<StaticSite>('/sites', { method: 'POST', body: JSON.stringify({ name }) });
+
+export const deleteSiteApi = (id: string) =>
+  request<StaticSite>(`/sites/${id}`, { method: 'DELETE' });
+
+/** 上传 zip 部署站点（不用 request 工具，因为是 FormData） */
+export async function deploySiteApi(id: string, file: File, version?: string): Promise<StaticSite> {
+  const token = getToken();
+  const form = new FormData();
+  form.append('file', file);
+  if (version) form.append('version', version);
+
+  const res = await fetch(BASE + `/sites/${id}/deploy`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+
+  if (res.status === 401) {
+    clearToken();
+    window.location.href = '/node-service-console/login';
+    throw new Error('未登录或登录已过期');
+  }
+
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.message || '部署失败');
+  return json.data as StaticSite;
+}

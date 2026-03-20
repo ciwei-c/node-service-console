@@ -100,3 +100,15 @@ export interface LogQuery {
   page?: number;
   pageSize?: number;
 }
+
+/* ── 静态站点 ── */
+
+export interface StaticSite {
+  id: string;
+  name: string;
+  accessPath: string;
+  currentVersion: string;
+  deployedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { Layout as AntLayout, Menu, Button, Popconfirm, Modal, Form, Input, message, Dropdown } from 'antd';
-import { AppstoreOutlined, ContainerOutlined, FileTextOutlined, LogoutOutlined, KeyOutlined, UserOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, ContainerOutlined, FileTextOutlined, LogoutOutlined, KeyOutlined, UserOutlined, GlobalOutlined } from '@ant-design/icons';
 import { logout, changePassword } from '../api';
 
 const { Header, Content } = AntLayout;
@@ -9,6 +9,7 @@ const { Header, Content } = AntLayout;
 const menuItems = [
   { key: '/', icon: <AppstoreOutlined />, label: '服务管理' },
   { key: '/containers', icon: <ContainerOutlined />, label: '容器列表' },
+  { key: '/sites', icon: <GlobalOutlined />, label: '静态站点' },
   { key: '/logs', icon: <FileTextOutlined />, label: '操作日志' },
 ];
 
@@ -20,6 +21,7 @@ export default function AppLayout() {
   const [form] = Form.useForm();
 
   const selectedKey = loc.pathname.startsWith('/containers') ? '/containers'
+    : loc.pathname.startsWith('/sites') ? '/sites'
     : loc.pathname.startsWith('/logs') ? '/logs'
     : '/';
 

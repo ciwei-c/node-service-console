@@ -4,9 +4,10 @@
 import express, { Router } from 'express';
 import cors from 'cors';
 import path from 'path';
-import { servicesRouter, containersRouter, webhookRouter, logsRouter, gitRouter } from './routes';
+import { servicesRouter, containersRouter, webhookRouter, logsRouter, gitRouter, sitesRouter } from './routes';
 import authRouter, { authMiddleware } from './routes/auth';
 import { reverseProxy } from './proxy';
+import { getSitesRoot } from './services/sites';
 
 export const BASE_PATH = '/node-service-console';
 
@@ -35,6 +36,7 @@ baseRouter.use('/api/containers', containersRouter);
 baseRouter.use('/api/webhook', webhookRouter);
 baseRouter.use('/api/logs', logsRouter);
 baseRouter.use('/api/git', gitRouter);
+baseRouter.use('/api/sites', sitesRouter);
 
 /* ── SPA fallback ── */
 baseRouter.get('*', (_req, res) => {
@@ -43,6 +45,23 @@ baseRouter.get('*', (_req, res) => {
 
 /* ── 挂载到基础路径 ── */
 app.use(BASE_PATH, baseRouter);
+
+/* ── 静态站点 /web/{name}/ ── */
+app.use('/web', express.static(getSitesRoot(), { extensions: ['html'] }));
+app.use('/web', (req, res, next) => {
+  // SPA fallback——如果访问的不是文件，fallback 到对应项目的 index.html
+  const parts = req.path.split('/').filter(Boolean);
+  if (parts.length >= 1) {
+    const projectName = parts[0];
+    const indexPath = path.join(getSitesRoot(), projectName, 'index.html');
+    const fs = require('fs');
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+      return;
+    }
+  }
+  next();
+});
 
 /* ── 根路径重定向到控制台 ── */
 app.get('/', (_req, res) => res.redirect(BASE_PATH));

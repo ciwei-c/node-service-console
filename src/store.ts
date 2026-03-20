@@ -23,7 +23,7 @@ const dataDir = isLinux
 const dataPath = path.join(dataDir, 'store.json');
 const logsPath = path.join(dataDir, 'logs.json');
 
-const defaultStore: Store = { services: [] };
+const defaultStore: Store = { services: [], sites: [] };
 const defaultLocalSettings: LocalSettings = { server: { port: 80 } };
 
 /** 确保数据文件存在 */
