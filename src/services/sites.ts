@@ -30,7 +30,23 @@ export function getSiteDir(name: string): string {
 }
 
 /**
- * 自动修正 index.html —— 注入 <base> 标签 + 将绝对路径转为相对路径
+ * 递归查找目录下所有 .html 文件
+ */
+function findHtmlFiles(dir: string): string[] {
+  const results: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...findHtmlFiles(fullPath));
+    } else if (entry.isFile() && entry.name.endsWith('.html')) {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
+
+/**
+ * 自动修正所有 HTML 文件 —— 注入 <base> 标签 + 将绝对路径转为相对路径
  *
  * 大多数前端构建工具（Vite / CRA / Next.js export）默认生成绝对路径：
  *   <script src="/assets/index-xxx.js">
@@ -40,33 +56,33 @@ export function getSiteDir(name: string): string {
  *   <base href="/web/{name}/">
  *   <script src="assets/index-xxx.js">
  */
-function rewriteIndexHtml(dir: string, accessPath: string): void {
-  const indexPath = path.join(dir, 'index.html');
-  if (!fs.existsSync(indexPath)) return;
-
-  let html = fs.readFileSync(indexPath, 'utf-8');
-
-  // 如果已经有 <base> 标签，不重复处理
-  if (/<base\s/i.test(html)) return;
-
+function rewriteHtmlFiles(dir: string, accessPath: string): void {
+  const htmlFiles = findHtmlFiles(dir);
   const basePath = accessPath.endsWith('/') ? accessPath : accessPath + '/';
 
-  // 1) src="/xxx" 和 href="/xxx" 中的绝对路径转为相对路径
-  //    排除 protocol-relative (//xxx) 和完整 URL (http://)
-  html = html.replace(
-    /((?:src|href|action)\s*=\s*["'])\/(?!\/|[a-zA-Z]+:)/g,
-    '$1',
-  );
+  for (const filePath of htmlFiles) {
+    let html = fs.readFileSync(filePath, 'utf-8');
 
-  // 2) 在 <head> 中注入 <base> 标签
-  if (/<head[^>]*>/i.test(html)) {
+    // 如果已经有 <base> 标签，跳过
+    if (/<base\s/i.test(html)) continue;
+
+    // 1) src="/xxx" 和 href="/xxx" 中的绝对路径转为相对路径
+    //    排除 protocol-relative (//xxx) 和完整 URL (http://)
     html = html.replace(
-      /(<head[^>]*>)/i,
-      `$1\n  <base href="${basePath}">`,
+      /((?:src|href|action)\s*=\s*["'])\/(?!\/|[a-zA-Z]+:)/g,
+      '$1',
     );
-  }
 
-  fs.writeFileSync(indexPath, html, 'utf-8');
+    // 2) 在 <head> 中注入 <base> 标签
+    if (/<head[^>]*>/i.test(html)) {
+      html = html.replace(
+        /(<head[^>]*>)/i,
+        `$1\n  <base href="${basePath}">`,
+      );
+    }
+
+    fs.writeFileSync(filePath, html, 'utf-8');
+  }
 }
 
 /* ── CRUD ── */
@@ -187,8 +203,8 @@ export async function deploySite(
     }
   }
 
-  // 自动修正 index.html 中的资源路径（注入 <base> + 绝对路径转相对路径）
-  rewriteIndexHtml(dir, site.accessPath);
+  // 自动修正所有 HTML 文件中的资源路径（注入 <base> + 绝对路径转相对路径）
+  rewriteHtmlFiles(dir, site.accessPath);
 
   // 更新站点信息
   const now = new Date().toISOString();
