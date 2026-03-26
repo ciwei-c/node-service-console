@@ -46,40 +46,34 @@ function findHtmlFiles(dir: string): string[] {
 }
 
 /**
- * 自动修正所有 HTML 文件 —— 注入 <base> 标签 + 将绝对路径转为相对路径
+ * 自动修正所有 HTML 文件中的资源路径
  *
- * 大多数前端构建工具（Vite / CRA / Next.js export）默认生成绝对路径：
- *   <script src="/assets/index-xxx.js">
- *   <link href="/assets/index-xxx.css">
+ * 处理策略：
+ * 1. 如果路径已经包含正确前缀（如 /web/ce-dev/assets/...） → 不处理
+ * 2. 如果路径是根路径绝对引用（如 /assets/...） → 加上前缀变为 /web/ce-dev/assets/...
+ * 3. 如果已有 <base> 标签 → 不处理
  *
- * 部署在 /web/{name}/ 下时需要改为相对路径 + <base> 标签：
- *   <base href="/web/{name}/">
- *   <script src="assets/index-xxx.js">
+ * 不再使用 <base> 标签注入，避免与已有构建配置冲突导致路径翻倍。
  */
 function rewriteHtmlFiles(dir: string, accessPath: string): void {
   const htmlFiles = findHtmlFiles(dir);
-  const basePath = accessPath.endsWith('/') ? accessPath : accessPath + '/';
+  const prefix = accessPath.endsWith('/') ? accessPath : accessPath + '/';
 
   for (const filePath of htmlFiles) {
     let html = fs.readFileSync(filePath, 'utf-8');
 
-    // 如果已经有 <base> 标签，跳过
+    // 已有 <base> 标签，跳过
     if (/<base\s/i.test(html)) continue;
 
-    // 1) src="/xxx" 和 href="/xxx" 中的绝对路径转为相对路径
-    //    排除 protocol-relative (//xxx) 和完整 URL (http://)
+    // 如果路径已经包含正确前缀，说明构建时已配置好 base，无需改写
+    if (html.includes(`"${prefix}`) || html.includes(`'${prefix}`)) continue;
+
+    // 将 src="/xxx" href="/xxx" action="/xxx" 中的根路径补上前缀
+    // 排除 protocol-relative (//xxx) 和完整 URL (http://)
     html = html.replace(
       /((?:src|href|action)\s*=\s*["'])\/(?!\/|[a-zA-Z]+:)/g,
-      '$1',
+      `$1${prefix}`,
     );
-
-    // 2) 在 <head> 中注入 <base> 标签
-    if (/<head[^>]*>/i.test(html)) {
-      html = html.replace(
-        /(<head[^>]*>)/i,
-        `$1\n  <base href="${basePath}">`,
-      );
-    }
 
     fs.writeFileSync(filePath, html, 'utf-8');
   }
