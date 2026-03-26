@@ -75,6 +75,7 @@ export default function TerminalPage() {
     // 建立 WebSocket 连接
     const token = getToken();
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // 直接使用 /terminal/ws 路径，生产环境 Nginx 转发，开发环境 Vite proxy 转发
     const wsUrl = `${proto}//${window.location.host}/terminal/ws?token=${encodeURIComponent(token || '')}`;
 
     setStatus('connecting');

@@ -20,6 +20,12 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      // WebTerminal WebSocket 代理
+      '/terminal/ws': {
+        target: `http://localhost:${API_PORT}`,
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
   build: {
