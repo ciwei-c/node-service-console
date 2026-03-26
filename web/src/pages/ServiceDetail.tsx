@@ -9,15 +9,16 @@ import {
   PlusOutlined, DeleteOutlined, PlayCircleOutlined,
   PauseCircleOutlined, EyeOutlined, SaveOutlined,
   LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined,
-  CodeOutlined, StopOutlined,
+  CodeOutlined, StopOutlined, DiffOutlined,
 } from '@ant-design/icons';
 import {
   fetchServiceByName, publishService, rollbackService, deleteDeployment,
   stopService, startService, updateEnvVars, updatePipeline, deleteService,
   fetchPublishStatus, subscribePublishEvents, stopPublishService,
+  fetchPublishDiff,
 } from '../api';
 import type { Service, Deployment, EnvVar, Pipeline } from '../types';
-import type { PublishStatus } from '../api';
+import type { PublishStatus, PublishDiff } from '../api';
 import dayjs from 'dayjs';
 import DebugPanel from './DebugPanel';
 import { useServiceStore } from '../serviceStore';
@@ -64,6 +65,11 @@ export default function ServiceDetail() {
   const publishLogOpenRef = useRef(publishLogOpen);
   publishLogOpenRef.current = publishLogOpen;
   const sseCloseRef = useRef<(() => void) | null>(null);
+
+  /* publish diff state */
+  const [diffOpen, setDiffOpen] = useState(false);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [diffData, setDiffData] = useState<PublishDiff | null>(null);
 
   const load = useCallback(async () => {
     if (!serviceName) return;
@@ -215,6 +221,20 @@ export default function ServiceDetail() {
     await deleteDeployment(svc.id, depId);
     message.success('已删除');
     load();
+  };
+
+  const handleShowDiff = async () => {
+    setDiffOpen(true);
+    setDiffLoading(true);
+    setDiffData(null);
+    try {
+      const data = await fetchPublishDiff(svc.id);
+      setDiffData(data);
+    } catch (err: any) {
+      message.error(err.message || '获取 Diff 失败');
+    } finally {
+      setDiffLoading(false);
+    }
   };
 
   const handleToggle = async () => {
@@ -435,6 +455,9 @@ export default function ServiceDetail() {
           disabled={publishing && publishStatus?.action !== 'rollback'}
         >
           回退
+        </Button>
+        <Button icon={<DiffOutlined />} onClick={handleShowDiff} disabled={publishing}>
+          发布对比
         </Button>
         <Text type="secondary" style={{ marginLeft: 8 }}>
           当前版本：<Text strong>{svc.currentVersion || '尚未发布'}</Text>
@@ -773,6 +796,58 @@ export default function ServiceDetail() {
           <div ref={logEndRef} />
         </div>
       </Drawer>
+
+      {/* ── 发布对比弹窗 ── */}
+      <Modal
+        title="发布对比 (Diff)"
+        open={diffOpen}
+        onCancel={() => setDiffOpen(false)}
+        footer={null}
+        width={720}
+        destroyOnClose
+      >
+        {diffLoading ? (
+          <div style={{ textAlign: 'center', padding: 40 }}><LoadingOutlined style={{ fontSize: 24 }} /> 正在获取提交记录...</div>
+        ) : diffData ? (
+          <div>
+            <Descriptions column={2} size="small" style={{ marginBottom: 16 }}>
+              <Descriptions.Item label="当前部署">
+                {diffData.currentCommitHash ? <Text code>{diffData.currentCommitHash.slice(0, 8)}</Text> : <Tag>尚未部署</Tag>}
+              </Descriptions.Item>
+              <Descriptions.Item label="远程最新">
+                <Text code>{diffData.latestCommitHash.slice(0, 8)}</Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="新增提交">
+                <Tag color={diffData.hasChanges ? 'blue' : 'default'}>{diffData.commits.length} 条</Tag>
+              </Descriptions.Item>
+              {diffData.filesChanged > 0 && (
+                <Descriptions.Item label="变更文件">
+                  <Tag color="orange">{diffData.filesChanged} 个</Tag>
+                </Descriptions.Item>
+              )}
+            </Descriptions>
+            {!diffData.hasChanges ? (
+              <Alert type="success" showIcon message="代码已是最新版本，无需发布" />
+            ) : (
+              <Table
+                rowKey="hash"
+                size="small"
+                pagination={false}
+                dataSource={diffData.commits}
+                scroll={{ y: 400 }}
+                columns={[
+                  { title: 'Commit', dataIndex: 'shortHash', width: 80, render: (h: string) => <Text code>{h}</Text> },
+                  { title: '提交信息', dataIndex: 'message', ellipsis: true },
+                  { title: '作者', dataIndex: 'author', width: 120 },
+                  { title: '时间', dataIndex: 'date', width: 170, render: (d: string) => dayjs(d).format('MM-DD HH:mm') },
+                ]}
+              />
+            )}
+          </div>
+        ) : (
+          <Alert type="warning" showIcon message="获取失败，请检查仓库配置" />
+        )}
+      </Modal>
     </div>
   );
 }

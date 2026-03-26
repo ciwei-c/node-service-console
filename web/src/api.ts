@@ -291,3 +291,56 @@ export async function testNotifyChannel(channel: NotifyChannel): Promise<{ ok: b
     body: JSON.stringify(channel),
   });
 }
+
+/* ── 数据备份 ── */
+
+export interface BackupInfo {
+  filename: string;
+  createdAt: string;
+  sizeMB: number;
+}
+
+export async function fetchBackups(): Promise<BackupInfo[]> {
+  return request<BackupInfo[]>('/backup');
+}
+
+export async function createBackupApi(): Promise<BackupInfo> {
+  return request<BackupInfo>('/backup', { method: 'POST' });
+}
+
+export async function deleteBackupApi(filename: string): Promise<void> {
+  return request<void>(`/backup/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+}
+
+export function getBackupDownloadUrl(filename: string): string {
+  const token = getToken();
+  return `${BASE}/backup/download/${encodeURIComponent(filename)}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+}
+
+/* ── 发布对比 (Diff) ── */
+
+export interface PublishDiff {
+  currentCommitHash: string;
+  latestCommitHash: string;
+  commits: { hash: string; shortHash: string; message: string; author: string; date: string }[];
+  filesChanged: number;
+  hasChanges: boolean;
+}
+
+export async function fetchPublishDiff(serviceId: string): Promise<PublishDiff> {
+  return request<PublishDiff>(`/services/${serviceId}/diff`);
+}
+
+/* ── 静态站点自定义域名 ── */
+
+export async function updateSiteDomain(id: string, domain: string | null): Promise<StaticSite> {
+  return request<StaticSite>(`/sites/${id}/domain`, {
+    method: 'PUT',
+    body: JSON.stringify({ domain }),
+  });
+}
+
+export async function fetchNginxPreview(id: string, domain: string): Promise<string> {
+  const data = await request<{ config: string }>(`/sites/${id}/nginx-preview?domain=${encodeURIComponent(domain)}`);
+  return data.config;
+}

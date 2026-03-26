@@ -4,9 +4,10 @@ import {
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, UploadOutlined, GlobalOutlined, CopyOutlined, ReloadOutlined,
+  LinkOutlined,
 } from '@ant-design/icons';
 import type { StaticSite } from '../types';
-import { fetchSites, createSiteApi, deleteSiteApi, deploySiteApi } from '../api';
+import { fetchSites, createSiteApi, deleteSiteApi, deploySiteApi, updateSiteDomain, fetchNginxPreview } from '../api';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -26,6 +27,14 @@ export default function SiteList() {
   const [deploySite, setDeploySite] = useState<StaticSite | null>(null);
   const [deployFile, setDeployFile] = useState<File | null>(null);
   const [deployVersion, setDeployVersion] = useState('');
+
+  /* 自定义域名弹窗 */
+  const [domainOpen, setDomainOpen] = useState(false);
+  const [domainSite, setDomainSite] = useState<StaticSite | null>(null);
+  const [domainValue, setDomainValue] = useState('');
+  const [domainLoading, setDomainLoading] = useState(false);
+  const [nginxPreview, setNginxPreview] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -95,6 +104,45 @@ export default function SiteList() {
     }
   };
 
+  /* 自定义域名 */
+  const openDomainModal = (site: StaticSite) => {
+    setDomainSite(site);
+    setDomainValue(site.customDomain || '');
+    setNginxPreview('');
+    setDomainOpen(true);
+  };
+
+  const handleSetDomain = async () => {
+    if (!domainSite) return;
+    setDomainLoading(true);
+    try {
+      await updateSiteDomain(domainSite.id, domainValue.trim() || null);
+      message.success(domainValue.trim() ? '域名已设置' : '域名已清除');
+      setDomainOpen(false);
+      load();
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setDomainLoading(false);
+    }
+  };
+
+  const handlePreviewNginx = async () => {
+    if (!domainSite || !domainValue.trim()) {
+      message.warning('请输入域名');
+      return;
+    }
+    setPreviewLoading(true);
+    try {
+      const config = await fetchNginxPreview(domainSite.id, domainValue.trim());
+      setNginxPreview(config);
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   /* 复制链接 */
   const copyUrl = (site: StaticSite) => {
     const url = `${window.location.origin}${site.accessPath}/`;
@@ -127,6 +175,14 @@ export default function SiteList() {
       dataIndex: 'currentVersion',
       key: 'currentVersion',
       render: (v: string) => v ? <Tag color="blue">{v}</Tag> : <Tag>未部署</Tag>,
+    },
+    {
+      title: '自定义域名',
+      dataIndex: 'customDomain',
+      key: 'customDomain',
+      render: (d: string) => d
+        ? <a href={`http://${d}`} target="_blank" rel="noreferrer">{d}</a>
+        : <Text type="secondary">-</Text>,
     },
     {
       title: '最后部署',
@@ -162,6 +218,13 @@ export default function SiteList() {
               访问
             </Button>
           )}
+          <Button
+            size="small"
+            icon={<LinkOutlined />}
+            onClick={() => openDomainModal(record)}
+          >
+            域名
+          </Button>
           <Popconfirm
             title="确认删除该站点？所有文件将被清除。"
             onConfirm={() => handleDelete(record.id)}
@@ -264,6 +327,52 @@ export default function SiteList() {
             <p className="ant-upload-text">点击或拖拽 .zip 文件到此区域</p>
             <p className="ant-upload-hint">支持前端构建产物 zip 包，最大 200MB</p>
           </Upload.Dragger>
+        </div>
+      </Modal>
+
+      {/* 自定义域名弹窗 */}
+      <Modal
+        title={`自定义域名 — ${domainSite?.name || ''}`}
+        open={domainOpen}
+        onOk={handleSetDomain}
+        onCancel={() => setDomainOpen(false)}
+        confirmLoading={domainLoading}
+        okText={domainValue.trim() ? '保存域名' : '清除域名'}
+        cancelText="取消"
+        width={640}
+        destroyOnClose
+      >
+        <div style={{ marginTop: 16 }}>
+          <div style={{ marginBottom: 12 }}>
+            <Text type="secondary">
+              为站点绑定自定义域名。请确保域名 DNS 已解析到服务器 IP。
+              {'\n'}留空并保存可清除已绑定的域名。
+            </Text>
+          </div>
+          <Input
+            placeholder="例如：blog.example.com"
+            value={domainValue}
+            onChange={(e) => setDomainValue(e.target.value)}
+            addonBefore="域名"
+            style={{ marginBottom: 16 }}
+          />
+          <Button onClick={handlePreviewNginx} loading={previewLoading} disabled={!domainValue.trim()}>
+            预览 Nginx 配置
+          </Button>
+          {nginxPreview && (
+            <pre style={{
+              marginTop: 12,
+              padding: 12,
+              background: '#1e1e1e',
+              color: '#d4d4d4',
+              borderRadius: 6,
+              fontSize: 12,
+              overflow: 'auto',
+              maxHeight: 300,
+            }}>
+              {nginxPreview}
+            </pre>
+          )}
         </div>
       </Modal>
     </div>

@@ -7,6 +7,8 @@ import ServiceDetail from './pages/ServiceDetail';
 import SiteList from './pages/SiteList';
 import MonitorDashboard from './pages/MonitorDashboard';
 import NotifySettings from './pages/NotifySettings';
+import TerminalPage from './pages/Terminal';
+import BackupRestore from './pages/BackupRestore';
 import Login from './pages/Login';
 import { isLoggedIn } from './api';
 
@@ -28,6 +30,8 @@ export default function App() {
         <Route path="/sites" element={<SiteList />} />
         <Route path="/monitor" element={<MonitorDashboard />} />
         <Route path="/notify" element={<NotifySettings />} />
+        <Route path="/terminal" element={<TerminalPage />} />
+        <Route path="/backup" element={<BackupRestore />} />
         <Route path="/logs" element={<LogList />} />
         <Route path="/:serviceName/*" element={<ServiceDetail />} />
       </Route>

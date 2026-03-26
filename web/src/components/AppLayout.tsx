@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { Layout as AntLayout, Menu, Button, Popconfirm, Modal, Form, Input, message, Dropdown } from 'antd';
-import { AppstoreOutlined, ContainerOutlined, FileTextOutlined, LogoutOutlined, KeyOutlined, UserOutlined, GlobalOutlined, DashboardOutlined, BellOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, ContainerOutlined, FileTextOutlined, LogoutOutlined, KeyOutlined, UserOutlined, GlobalOutlined, DashboardOutlined, BellOutlined, CodeOutlined, CloudOutlined } from '@ant-design/icons';
 import { logout, changePassword } from '../api';
 
 const { Header, Content } = AntLayout;
@@ -12,6 +12,8 @@ const menuItems = [
   { key: '/sites', icon: <GlobalOutlined />, label: '静态站点' },
   { key: '/monitor', icon: <DashboardOutlined />, label: '系统监控' },
   { key: '/notify', icon: <BellOutlined />, label: '通知告警' },
+  { key: '/terminal', icon: <CodeOutlined />, label: '终端' },
+  { key: '/backup', icon: <CloudOutlined />, label: '数据备份' },
   { key: '/logs', icon: <FileTextOutlined />, label: '操作日志' },
 ];
 
@@ -26,6 +28,8 @@ export default function AppLayout() {
     : loc.pathname.startsWith('/sites') ? '/sites'
     : loc.pathname.startsWith('/monitor') ? '/monitor'
     : loc.pathname.startsWith('/notify') ? '/notify'
+    : loc.pathname.startsWith('/terminal') ? '/terminal'
+    : loc.pathname.startsWith('/backup') ? '/backup'
     : loc.pathname.startsWith('/logs') ? '/logs'
     : '/';
 

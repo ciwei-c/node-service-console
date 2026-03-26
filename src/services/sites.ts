@@ -8,6 +8,7 @@
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { execSync } from 'child_process';
 import { readStore, writeStore } from '../store';
 import type { StaticSite, ErrorResult } from '../types';
 
@@ -211,4 +212,107 @@ export async function deploySite(
   writeStore(store);
 
   return site;
+}
+
+/* ── 自定义域名 ── */
+
+const DOMAIN_RE = /^[a-zA-Z0-9]([a-zA-Z0-9-]*\.)+[a-zA-Z]{2,}$/;
+const isLinux = process.platform === 'linux';
+
+/**
+ * 为站点设置自定义域名
+ * - 生成 Nginx 配置文件
+ * - 重载 Nginx
+ */
+export function setCustomDomain(
+  id: string,
+  domain: string | null,
+): StaticSite | ErrorResult {
+  const store = readStore();
+  if (!store.sites) store.sites = [];
+  const site = store.sites.find((s) => s.id === id);
+  if (!site) return { error: '站点不存在' };
+
+  if (domain) {
+    domain = domain.trim().toLowerCase();
+    if (!DOMAIN_RE.test(domain)) {
+      return { error: '域名格式不正确' };
+    }
+    // 检查域名是否已被其他站点使用
+    const existing = store.sites.find((s) => s.customDomain === domain && s.id !== id);
+    if (existing) {
+      return { error: `域名 ${domain} 已被站点「${existing.name}」使用` };
+    }
+  }
+
+  const oldDomain = site.customDomain;
+  site.customDomain = domain || undefined;
+  site.updatedAt = new Date().toISOString();
+  writeStore(store);
+
+  // 生成 / 删除 Nginx 配置
+  if (isLinux) {
+    try {
+      if (domain) {
+        writeNginxConfig(site.name, domain, getSiteDir(site.name));
+      } else if (oldDomain) {
+        removeNginxConfig(site.name);
+      }
+      // 重载 Nginx
+      execSync('nginx -t && nginx -s reload', { stdio: 'pipe', timeout: 10000 });
+    } catch (err: any) {
+      // Nginx 配置失败不影响域名保存
+      console.error('[sites] Nginx 配置刷新失败:', err.message);
+    }
+  }
+
+  return site;
+}
+
+/** 获取 Nginx 配置预览（供前端展示） */
+export function getNginxConfigPreview(siteName: string, domain: string): string {
+  const siteDir = getSiteDir(siteName);
+  return buildNginxServerBlock(siteName, domain, siteDir);
+}
+
+/** 生成 Nginx server block 配置 */
+function buildNginxServerBlock(siteName: string, domain: string, siteDir: string): string {
+  return `# 自动生成 — 静态站点 ${siteName} 自定义域名
+# 域名: ${domain}
+server {
+    listen 80;
+    server_name ${domain};
+
+    root ${siteDir};
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 缓存静态资源
+    location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    access_log /var/log/nginx/site-${siteName}.access.log;
+    error_log  /var/log/nginx/site-${siteName}.error.log;
+}
+`;
+}
+
+/** 写入 Nginx 配置文件 */
+function writeNginxConfig(siteName: string, domain: string, siteDir: string): void {
+  const confDir = '/etc/nginx/conf.d';
+  if (!fs.existsSync(confDir)) return;
+  const confPath = path.join(confDir, `site-${siteName}.conf`);
+  const content = buildNginxServerBlock(siteName, domain, siteDir);
+  fs.writeFileSync(confPath, content, 'utf-8');
+}
+
+/** 删除 Nginx 配置文件 */
+function removeNginxConfig(siteName: string): void {
+  const confPath = `/etc/nginx/conf.d/site-${siteName}.conf`;
+  if (fs.existsSync(confPath)) fs.unlinkSync(confPath);
 }

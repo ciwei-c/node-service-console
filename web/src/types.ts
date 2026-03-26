@@ -109,6 +109,8 @@ export interface StaticSite {
   accessPath: string;
   currentVersion: string;
   deployedAt?: string;
+  /** 自定义域名 */
+  customDomain?: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -6,7 +6,7 @@ import type { Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import os from 'os';
-import { listSites, getSiteById, createSite, deleteSite, deploySite } from '../services/sites';
+import { listSites, getSiteById, createSite, deleteSite, deploySite, setCustomDomain, getNginxConfigPreview } from '../services/sites';
 
 const router = Router();
 
@@ -69,6 +69,34 @@ router.post('/:id/deploy', upload.single('file'), async (req: Request, res: Resp
   } catch (err: any) {
     res.status(500).json({ message: err.message || '部署失败' });
   }
+});
+
+/** PUT /api/sites/:id/domain — 设置自定义域名 */
+router.put('/:id/domain', (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const { domain } = req.body; // domain 为 null 表示清除
+  const result = setCustomDomain(id, domain || null);
+  if ('error' in result) {
+    res.status(400).json({ message: result.error });
+    return;
+  }
+  res.json({ data: result });
+});
+
+/** GET /api/sites/:id/nginx-preview — 获取 Nginx 配置预览 */
+router.get('/:id/nginx-preview', (req: Request, res: Response) => {
+  const site = getSiteById(req.params.id as string);
+  if (!site) {
+    res.status(404).json({ message: '站点不存在' });
+    return;
+  }
+  const domain = (req.query.domain as string) || site.customDomain;
+  if (!domain) {
+    res.status(400).json({ message: '请指定域名' });
+    return;
+  }
+  const config = getNginxConfigPreview(site.name, domain);
+  res.json({ data: { config } });
 });
 
 export default router;

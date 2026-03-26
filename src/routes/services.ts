@@ -11,6 +11,7 @@ import {
   getPublishStatus, isPublishing, addSseClient,
 } from '../services';
 import { maskService } from '../helpers';
+import { getPublishDiff } from '../services/diff';
 import type { ErrorResult } from '../types';
 
 const router = Router();
@@ -167,6 +168,20 @@ router.put('/:id/pipeline', (req: Request<{ id: string }>, res: Response) => {
   const result = updateServicePipeline(req.params.id, req.body);
   if (result === null) return res.status(404).json({ message: '服务不存在' });
   return res.json({ data: result });
+});
+
+/* ── 发布对比 (Diff) ── */
+
+router.get('/:id/diff', async (req: Request<{ id: string }>, res: Response) => {
+  const svc = getServiceById(req.params.id);
+  if (!svc) return res.status(404).json({ message: '服务不存在' });
+
+  try {
+    const diff = await getPublishDiff(svc);
+    return res.json({ data: diff });
+  } catch (err: any) {
+    return res.status(500).json({ message: `获取 Diff 失败: ${err.message}` });
+  }
 });
 
 /* ── 云端调试 — HTTP 代理 ── */

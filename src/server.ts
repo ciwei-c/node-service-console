@@ -7,6 +7,7 @@ import { BASE_PATH } from './app';
 import { readLocalSettings } from './store';
 import { setupWsProxy } from './proxy';
 import { startHealthSync } from './services/healthSync';
+import { setupTerminalWs } from './services/terminal';
 import { initAuth } from './routes/auth';
 
 function getLocalIP(): string {
@@ -32,6 +33,9 @@ const server = app.listen(port, () => {
 
 /* ── WebSocket 反向代理 ── */
 setupWsProxy(server);
+
+/* ── WebSocket 终端 ── */
+setupTerminalWs(server);
 
 /* ── 容器健康状态定时同步 ── */
 startHealthSync();
