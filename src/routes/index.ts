@@ -4,3 +4,4 @@ export { default as webhookRouter } from './webhook';
 export { default as logsRouter } from './logs';
 export { default as gitRouter } from './git';
 export { default as sitesRouter } from './sites';
+export { default as monitorRouter } from './monitor';

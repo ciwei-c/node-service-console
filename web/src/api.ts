@@ -234,3 +234,21 @@ export async function deploySiteApi(id: string, file: File, version?: string): P
   if (!res.ok) throw new Error(json.message || '部署失败');
   return json.data as StaticSite;
 }
+
+/* ── 系统监控 ── */
+
+export interface SystemStats {
+  timestamp: string;
+  hostname: string;
+  platform: string;
+  uptime: { uptimeSeconds: number; uptimeFormatted: string };
+  cpu: { usagePercent: number; cores: number; model: string };
+  memory: { totalMB: number; usedMB: number; freeMB: number; usagePercent: number };
+  disks: { filesystem: string; mountpoint: string; totalGB: number; usedGB: number; availGB: number; usagePercent: number }[];
+  containers: { id: string; name: string; cpuPercent: number; memUsageMB: number; memLimitMB: number; memPercent: number; netIO: string; blockIO: string; pids: number }[];
+  loadAvg: number[];
+}
+
+export async function fetchSystemStats(): Promise<SystemStats> {
+  return request<SystemStats>('/monitor');
+}

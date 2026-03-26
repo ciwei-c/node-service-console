@@ -4,7 +4,7 @@
 import express, { Router } from 'express';
 import cors from 'cors';
 import path from 'path';
-import { servicesRouter, containersRouter, webhookRouter, logsRouter, gitRouter, sitesRouter } from './routes';
+import { servicesRouter, containersRouter, webhookRouter, logsRouter, gitRouter, sitesRouter, monitorRouter } from './routes';
 import authRouter, { authMiddleware } from './routes/auth';
 import { reverseProxy } from './proxy';
 import { getSitesRoot } from './services/sites';
@@ -37,6 +37,7 @@ baseRouter.use('/api/webhook', webhookRouter);
 baseRouter.use('/api/logs', logsRouter);
 baseRouter.use('/api/git', gitRouter);
 baseRouter.use('/api/sites', sitesRouter);
+baseRouter.use('/api/monitor', monitorRouter);
 
 /* ── SPA fallback ── */
 baseRouter.get('*', (_req, res) => {
