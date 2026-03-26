@@ -69,11 +69,14 @@ function rewriteHtmlFiles(dir: string, accessPath: string): void {
     if (html.includes(`"${prefix}`) || html.includes(`'${prefix}`)) continue;
 
     // 将 src="/xxx" href="/xxx" action="/xxx" 中的根路径补上前缀
-    // 排除 protocol-relative (//xxx) 和完整 URL (http://)
-    html = html.replace(
-      /((?:src|href|action)\s*=\s*["'])\/(?!\/|[a-zA-Z]+:)/g,
-      `$1${prefix}`,
+    // 排除 protocol-relative (//xxx)、完整 URL (http://) 以及已有前缀的路径
+    const prefixContent = prefix.slice(1); // "web/ce-dev/"
+    const escapedPrefix = prefixContent.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(
+      `((?:src|href|action)\\s*=\\s*["'])\\/(?!\\/|[a-zA-Z]+:|${escapedPrefix})`,
+      'g',
     );
+    html = html.replace(re, `$1${prefix}`);
 
     fs.writeFileSync(filePath, html, 'utf-8');
   }
