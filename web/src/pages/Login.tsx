@@ -187,6 +187,16 @@ export default function Login() {
           <Text style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12 }}>
             Node Service Console
           </Text>
+          <div style={{ marginTop: 8 }}>
+            <a
+              href="https://beian.miit.gov.cn/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12 }}
+            >
+              闽ICP备2024076169号-2
+            </a>
+          </div>
         </div>
       </div>
     </div>
