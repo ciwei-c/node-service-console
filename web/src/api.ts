@@ -252,3 +252,42 @@ export interface SystemStats {
 export async function fetchSystemStats(): Promise<SystemStats> {
   return request<SystemStats>('/monitor');
 }
+
+/* ── 通知告警 ── */
+
+export interface NotifyChannel {
+  type: 'webhook' | 'telegram';
+  enabled: boolean;
+  name: string;
+  webhookUrl?: string;
+  telegramBotToken?: string;
+  telegramChatId?: string;
+}
+
+export interface NotifyConfig {
+  enabled: boolean;
+  channels: NotifyChannel[];
+  events: {
+    containerCrash: boolean;
+    publishFail: boolean;
+    publishSuccess: boolean;
+  };
+}
+
+export async function fetchNotifyConfig(): Promise<NotifyConfig> {
+  return request<NotifyConfig>('/notify/config');
+}
+
+export async function updateNotifyConfig(config: NotifyConfig): Promise<NotifyConfig> {
+  return request<NotifyConfig>('/notify/config', {
+    method: 'PUT',
+    body: JSON.stringify(config),
+  });
+}
+
+export async function testNotifyChannel(channel: NotifyChannel): Promise<{ ok: boolean; error?: string }> {
+  return request<{ ok: boolean; error?: string }>('/notify/test', {
+    method: 'POST',
+    body: JSON.stringify(channel),
+  });
+}

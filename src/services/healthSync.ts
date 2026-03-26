@@ -6,6 +6,7 @@
  */
 import { readStore, writeStore } from '../store';
 import { getContainerState } from '../docker';
+import { sendAlert } from './notify';
 
 const SYNC_INTERVAL = 30_000; // 30 秒
 
@@ -25,6 +26,8 @@ export function syncContainerStatus(): void {
       svc.updatedAt = new Date().toISOString();
       changed = true;
       console.log(`[health-sync] ${svc.name}: running → stopped (actual: ${actual ?? 'not found'})`);
+      // 发送容器崩溃告警
+      sendAlert('container_crash', svc.name, `容器已崩溃或停止运行 (实际状态: ${actual ?? '未找到'})`).catch(() => {});
     } else if (svc.status === 'stopped' && actual === 'running') {
       // 容器被外部启动了（如 docker restart 策略），但 store 记录为 stopped
       svc.status = 'running';

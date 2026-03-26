@@ -6,6 +6,7 @@ import ServiceList from './pages/ServiceList';
 import ServiceDetail from './pages/ServiceDetail';
 import SiteList from './pages/SiteList';
 import MonitorDashboard from './pages/MonitorDashboard';
+import NotifySettings from './pages/NotifySettings';
 import Login from './pages/Login';
 import { isLoggedIn } from './api';
 
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="/containers" element={<ContainerList />} />
         <Route path="/sites" element={<SiteList />} />
         <Route path="/monitor" element={<MonitorDashboard />} />
+        <Route path="/notify" element={<NotifySettings />} />
         <Route path="/logs" element={<LogList />} />
         <Route path="/:serviceName/*" element={<ServiceDetail />} />
       </Route>

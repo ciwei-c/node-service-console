@@ -6,6 +6,7 @@ import { readStore, writeStore } from '../store';
 import { dockerPublish, dockerRebuildFromCommit, dockerRemoveImage } from '../docker';
 import { addLog } from './logs';
 import { startPublish, addPublishLog, finishPublish, isPublishing, stopPublish } from './publishTracker';
+import { sendAlert } from './notify';
 import type { Service, Deployment, PublishResult, RollbackResult, ErrorResult } from '../types';
 
 /** 保存被中止/停止的发布记录到 store */
@@ -84,13 +85,15 @@ export function publishServiceAsync(
 
       if (!execResult.ok) {
         finishPublish(serviceId, false);
+        const failDetail = `发布失败: ${execResult.logs.join(' | ')}`;
         addLog({
           action: 'publish',
           serviceName: target.name,
           success: false,
           version,
-          detail: `发布失败: ${execResult.logs.join(' | ')}`,
+          detail: failDetail,
         });
+        sendAlert('publish_fail', target.name, failDetail).catch(() => {});
         return;
       }
 
@@ -133,6 +136,7 @@ export function publishServiceAsync(
           version,
           detail: `发布成功，版本 ${version}，清理 ${removedCount} 个旧镜像`,
         });
+        sendAlert('publish_success', freshTarget.name, `发布成功，版本 ${version}`).catch(() => {});
       }
 
       finishPublish(serviceId, true);
@@ -147,6 +151,7 @@ export function publishServiceAsync(
         version,
         detail: `发布异常: ${err.message}`,
       });
+      sendAlert('publish_fail', target.name, `发布异常: ${err.message}`).catch(() => {});
     }
   })();
 

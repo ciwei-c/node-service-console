@@ -5,3 +5,4 @@ export { default as logsRouter } from './logs';
 export { default as gitRouter } from './git';
 export { default as sitesRouter } from './sites';
 export { default as monitorRouter } from './monitor';
+export { default as notifyRouter } from './notify';

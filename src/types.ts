@@ -74,6 +74,41 @@ export interface LocalSettings {
   };
   github?: { clientId: string };
   logs?: { maxCount?: number; maxAgeDays?: number };
+  /** 通知告警配置 */
+  notify?: NotifyConfig;
+}
+
+/* ── 通知告警 ── */
+
+export interface NotifyChannel {
+  /** 渠道类型 */
+  type: 'webhook' | 'telegram';
+  /** 是否启用 */
+  enabled: boolean;
+  /** 渠道名称（用户自定义） */
+  name: string;
+  /** Webhook URL（type=webhook 时使用） */
+  webhookUrl?: string;
+  /** Telegram Bot Token（type=telegram 时使用） */
+  telegramBotToken?: string;
+  /** Telegram Chat ID（type=telegram 时使用） */
+  telegramChatId?: string;
+}
+
+export interface NotifyConfig {
+  /** 是否全局启用通知 */
+  enabled: boolean;
+  /** 通知渠道列表 */
+  channels: NotifyChannel[];
+  /** 触发事件配置 */
+  events: {
+    /** 容器崩溃 */
+    containerCrash: boolean;
+    /** 发布失败 */
+    publishFail: boolean;
+    /** 发布成功 */
+    publishSuccess: boolean;
+  };
 }
 
 export interface OAuthToken {
