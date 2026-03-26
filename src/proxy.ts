@@ -224,6 +224,10 @@ export function setupWsProxy(server: http.Server): void {
   server.on('upgrade', (req, socket, head) => {
     const url = req.url || '';
     const pathname = url.split('?')[0];
+
+    // /terminal/ws 由 terminal 模块处理，不要拦截
+    if (pathname === '/terminal/ws') return;
+
     const target = findTarget(pathname);
     if (!target) return; // 不匹配的升级请求不处理
 
