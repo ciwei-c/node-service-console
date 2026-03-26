@@ -49,7 +49,12 @@ app.use(BASE_PATH, baseRouter);
 /* ── 静态站点 /web/{name}/ ── */
 app.use('/web', express.static(getSitesRoot(), { extensions: ['html'] }));
 app.use('/web', (req, res, next) => {
-  // SPA fallback——如果访问的不是文件，fallback 到对应项目的 index.html
+  // SPA fallback——仅处理没有文件扩展名的路由请求（如 /web/ce-dev/dashboard）
+  // 带扩展名的请求（.js/.css/.png 等）如果静态文件不存在应返回 404，不应返回 index.html
+  if (path.extname(req.path)) {
+    next();
+    return;
+  }
   const parts = req.path.split('/').filter(Boolean);
   if (parts.length >= 1) {
     const projectName = parts[0];
