@@ -150,7 +150,7 @@ export default function Login() {
         {/* 标题 */}
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
           <Title level={3} className="login-title" style={{ margin: '0 0 6px' }}>
-            服务管理控制台
+            堆堆岛服务管理控制台
           </Title>
           <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 14 }}>
             请输入管理员密码以继续

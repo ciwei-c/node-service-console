@@ -28,7 +28,7 @@ initAuth();
 const server = app.listen(port, () => {
   const host = getLocalIP();
   const portSuffix = Number(port) === 80 ? '' : `:${port}`;
-  console.log(`服务管理控制台已启动: http://${host}${portSuffix}${BASE_PATH}`);
+  console.log(`堆堆岛服务管理控制台已启动: http://${host}${portSuffix}${BASE_PATH}`);
 });
 
 /* ── WebSocket 反向代理 ── */

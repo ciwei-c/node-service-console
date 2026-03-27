@@ -58,7 +58,7 @@ export default function AppLayout() {
           color: '#fff', fontSize: 18, fontWeight: 600,
           marginRight: 40, whiteSpace: 'nowrap',
         }}>
-          🚀 服务管理控制台
+          🚀 堆堆岛服务管理控制台
         </div>
         <Menu
           theme="dark"
