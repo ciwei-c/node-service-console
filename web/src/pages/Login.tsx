@@ -150,7 +150,7 @@ export default function Login() {
         {/* 标题 */}
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
           <Title level={3} className="login-title" style={{ margin: '0 0 6px' }}>
-            服务管理控制台
+            堆堆岛服务管理控制台
           </Title>
           <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 14 }}>
             请输入管理员密码以继续
@@ -187,6 +187,16 @@ export default function Login() {
           <Text style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12 }}>
             Node Service Console
           </Text>
+          <div style={{ marginTop: 8 }}>
+            <a
+              href="https://beian.miit.gov.cn/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12 }}
+            >
+              闽ICP备2024076169号-2
+            </a>
+          </div>
         </div>
       </div>
     </div>

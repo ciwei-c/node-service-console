@@ -4,7 +4,7 @@ import { Layout as AntLayout, Menu, Button, Popconfirm, Modal, Form, Input, mess
 import { AppstoreOutlined, ContainerOutlined, FileTextOutlined, LogoutOutlined, KeyOutlined, UserOutlined, GlobalOutlined, DashboardOutlined, BellOutlined, CodeOutlined, CloudOutlined } from '@ant-design/icons';
 import { logout, changePassword } from '../api';
 
-const { Header, Content } = AntLayout;
+const { Header, Content, Footer } = AntLayout;
 
 const menuItems = [
   { key: '/', icon: <AppstoreOutlined />, label: '服务管理' },
@@ -58,7 +58,7 @@ export default function AppLayout() {
           color: '#fff', fontSize: 18, fontWeight: 600,
           marginRight: 40, whiteSpace: 'nowrap',
         }}>
-          🚀 服务管理控制台
+          🚀 堆堆岛服务管理控制台
         </div>
         <Menu
           theme="dark"
@@ -97,6 +97,18 @@ export default function AppLayout() {
       <Content style={{ background: '#f5f5f5' }}>
         <Outlet />
       </Content>
+      
+      <Footer style={{
+        textAlign: 'center',
+        color: '#999',
+        fontSize: 12,
+        borderTop: '1px solid #e8e8e8',
+        padding: '20px 24px',
+      }}>
+        <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer" style={{ color: '#999' }}>
+          闽ICP备2024076169号-2
+        </a>
+      </Footer>
 
       {/* 修改密码弹窗 */}
       <Modal
