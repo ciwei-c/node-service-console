@@ -5,6 +5,7 @@ import { isLoggedIn } from './api';
 
 const AppLayout = lazy(() => import('./components/AppLayout'));
 const ContainerList = lazy(() => import('./pages/ContainerList'));
+const DatabaseList = lazy(() => import('./pages/DatabaseList'));
 const LogList = lazy(() => import('./pages/LogList'));
 const ServiceList = lazy(() => import('./pages/ServiceList'));
 const ServiceDetail = lazy(() => import('./pages/ServiceDetail'));
@@ -37,6 +38,7 @@ export default function App() {
         <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
           <Route path="/" element={<ServiceList />} />
           <Route path="/containers" element={<ContainerList />} />
+          <Route path="/databases" element={<DatabaseList />} />
           <Route path="/sites" element={<SiteList />} />
           <Route path="/monitor" element={<MonitorDashboard />} />
           <Route path="/notify" element={<NotifySettings />} />

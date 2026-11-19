@@ -23,7 +23,7 @@ const dataDir = isLinux
 const dataPath = path.join(dataDir, 'store.json');
 const logsPath = path.join(dataDir, 'logs.json');
 
-const defaultStore: Store = { services: [], sites: [] };
+const defaultStore: Store = { services: [], sites: [], databases: [] };
 const defaultLocalSettings: LocalSettings = { server: { port: 80 } };
 
 /** 确保数据文件存在 */
@@ -38,7 +38,12 @@ function ensureFiles(): void {
 
 export function readStore(): Store {
   ensureFiles();
-  return JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
+  const store = JSON.parse(fs.readFileSync(dataPath, 'utf-8')) as Store;
+  // 兼容旧版本 store.json（没有 databases 字段）
+  store.services ??= [];
+  store.sites ??= [];
+  store.databases ??= [];
+  return store;
 }
 
 export function writeStore(store: Store): void {

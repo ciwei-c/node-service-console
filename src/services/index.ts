@@ -6,3 +6,14 @@ export { publishServiceAsync, rollbackServiceAsync, deleteDeployment, stopServic
 export { stopService, startService, updateServiceEnvVars, updateServicePipeline } from './lifecycle';
 export { addLog, queryLogs, getLogServiceNames } from './logs';
 export { getPublishStatus, isPublishing, addSseClient, abortPublish, stopPublish } from './publishTracker';
+export {
+  listDatabases,
+  getDatabase,
+  createDatabase,
+  deleteDatabase,
+  startDatabase,
+  stopDatabase,
+  restartDatabase,
+  getDatabaseLogs,
+  getDatabaseStats,
+} from './databases';

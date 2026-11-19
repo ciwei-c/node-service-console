@@ -169,7 +169,7 @@ export function reverseProxy(req: Request, res: Response, next: NextFunction): v
     const chunks: Buffer[] = [];
     proxyRes.on('data', (chunk: Buffer) => chunks.push(chunk));
     proxyRes.on('end', () => {
-      let raw = Buffer.concat(chunks);
+      let raw: Buffer = Buffer.concat(chunks);
 
       // 处理压缩
       const encoding = proxyRes.headers['content-encoding'];

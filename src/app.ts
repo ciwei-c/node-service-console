@@ -4,7 +4,7 @@
 import express, { Router } from 'express';
 import cors from 'cors';
 import path from 'path';
-import { servicesRouter, containersRouter, webhookRouter, logsRouter, gitRouter, sitesRouter, monitorRouter, notifyRouter, backupRouter } from './routes';
+import { servicesRouter, containersRouter, databasesRouter, webhookRouter, logsRouter, gitRouter, sitesRouter, monitorRouter, notifyRouter, backupRouter } from './routes';
 import authRouter, { authMiddleware } from './routes/auth';
 import { reverseProxy } from './proxy';
 import { getSitesRoot } from './services/sites';
@@ -33,6 +33,7 @@ baseRouter.use(authMiddleware);
 /* ── API 路由挂载 ── */
 baseRouter.use('/api/services', servicesRouter);
 baseRouter.use('/api/containers', containersRouter);
+baseRouter.use('/api/databases', databasesRouter);
 baseRouter.use('/api/webhook', webhookRouter);
 baseRouter.use('/api/logs', logsRouter);
 baseRouter.use('/api/git', gitRouter);

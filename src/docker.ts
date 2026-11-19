@@ -439,3 +439,186 @@ export function getContainerState(serviceName: string): string | null {
   if (!res.ok) return null;
   return res.output.trim() || null;
 }
+
+/* ── 数据库容器（MySQL / MariaDB） ── */
+
+export interface DatabaseContainerInfo {
+  id: string;
+  name: string;
+  image: string;
+  state: string;
+  status: string;
+  ports: string;
+  labels: string;
+  created: string;
+}
+
+const DB_CONTAINER_PREFIX = 'nsc-mysql-';
+
+export function databaseContainerName(name: string): string {
+  return `${DB_CONTAINER_PREFIX}${name}`;
+}
+
+export function databaseVolumeName(name: string): string {
+  return `${DB_CONTAINER_PREFIX}${name}-data`;
+}
+
+function isDatabaseImage(image: string): boolean {
+  const base = image.split('@')[0];
+  return /(^|\/)(mysql|mariadb)(:.*)?$/i.test(base);
+}
+
+export function dockerListDatabaseContainers(): DatabaseContainerInfo[] {
+  const fmt = `{"id":"{{.ID}}","name":"{{.Names}}","image":"{{.Image}}","state":"{{.State}}","status":"{{.Status}}","ports":"{{.Ports}}","labels":"{{.Labels}}","created":"{{.CreatedAt}}"}`;
+  const res = run(`docker ps -a --format '${fmt}'`);
+  if (!res.ok || !res.output) return [];
+  return res.output
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      try { return JSON.parse(line) as DatabaseContainerInfo; } catch { return null; }
+    })
+    .filter((x): x is DatabaseContainerInfo => !!x)
+    .filter((c) => isDatabaseImage(c.image) || (c.labels || '').includes('nsc.type=mysql'));
+}
+
+export function dockerDatabaseInspect(containerName: string): Record<string, any> | null {
+  const res = run(`docker inspect ${containerName}`);
+  if (!res.ok) return null;
+  try {
+    const arr = JSON.parse(res.output);
+    return arr[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+export function dockerDatabaseHealth(containerName: string): string | undefined {
+  const res = run(`docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' ${containerName}`);
+  return res.ok ? res.output.trim() || undefined : undefined;
+}
+
+export function dockerDatabaseStats(containerName: string): { cpu: string; mem: string } | null {
+  const res = run(`docker stats --no-stream --format '{{.CPUPerc}}|{{.MemUsage}}' ${containerName}`);
+  if (!res.ok || !res.output) return null;
+  const [cpu, mem] = res.output.split('|');
+  return { cpu: cpu || '-', mem: mem || '-' };
+}
+
+export function dockerVolumeExists(volumeName: string): boolean {
+  return run(`docker volume inspect ${volumeName}`).ok;
+}
+
+/** 包含已停止容器占用的端口，避免重新启动时冲突 */
+function getReservedPorts(): Set<number> {
+  const used = new Set<number>();
+  const res = run('docker ps -a --format "{{.Ports}}"');
+  if (res.ok && res.output) {
+    for (const m of res.output.matchAll(/:(\d+)->/g)) used.add(parseInt(m[1], 10));
+  }
+  return used;
+}
+
+export async function isDatabasePortUsable(port: number): Promise<boolean> {
+  if (getReservedPorts().has(port)) return false;
+  return isPortAvailable(port);
+}
+
+/** 优先使用指定端口，否则在 3306-3399 自动分配 */
+export async function allocateDatabaseHostPort(preferred?: number): Promise<number> {
+  if (preferred) {
+    if (await isDatabasePortUsable(preferred)) return preferred;
+    throw new Error('PORT_IN_USE');
+  }
+  const reserved = getReservedPorts();
+  for (let port = 3306; port <= 3399; port++) {
+    if (reserved.has(port)) continue;
+    if (await isPortAvailable(port)) return port;
+  }
+  throw new Error('NO_PORT');
+}
+
+export async function dockerCreateMysql(opts: {
+  name: string;
+  image: string;
+  hostPort: number;
+  containerPort: number;
+  volumeName: string;
+  rootPassword: string;
+  databaseName: string;
+  username: string;
+  password: string;
+  memoryLimitMB?: number;
+}): Promise<ExecResult> {
+  const cn = databaseContainerName(opts.name);
+  const envDir = path.join(__dirname, '..', 'tmp');
+  fs.mkdirSync(envDir, { recursive: true });
+  const envFile = path.join(envDir, `${cn}.env`);
+  fs.writeFileSync(
+    envFile,
+    [
+      `MYSQL_ROOT_PASSWORD=${opts.rootPassword}`,
+      `MYSQL_DATABASE=${opts.databaseName}`,
+      `MYSQL_USER=${opts.username}`,
+      `MYSQL_PASSWORD=${opts.password}`,
+      'TZ=Asia/Shanghai',
+    ].join('\n'),
+    'utf-8',
+  );
+
+  const memory = opts.memoryLimitMB ? `--memory ${opts.memoryLimitMB}m` : '';
+  const cmd = [
+    'docker run -d',
+    `--name ${cn}`,
+    '--restart unless-stopped',
+    `-p ${opts.hostPort}:${opts.containerPort}`,
+    `--env-file "${envFile}"`,
+    `-v ${opts.volumeName}:/var/lib/mysql`,
+    '--label nsc.managed=true',
+    '--label nsc.type=mysql',
+    `--label nsc.instance=${opts.name}`,
+    `--health-cmd 'mysqladmin ping -h 127.0.0.1 -uroot -p"$MYSQL_ROOT_PASSWORD" --silent'`,
+    '--health-interval=5s',
+    '--health-timeout=5s',
+    '--health-retries=30',
+    '--health-start-period=30s',
+    memory,
+    `${opts.image} --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-time-zone=+08:00`,
+  ].filter(Boolean).join(' ');
+
+  try {
+    return await runAsync(cmd);
+  } finally {
+    try { if (fs.existsSync(envFile)) fs.unlinkSync(envFile); } catch { /* ignore */ }
+  }
+}
+
+/** 等待容器健康，返回最终健康状态（healthy / unhealthy / running / unknown） */
+export async function waitForDatabaseHealthy(containerName: string, timeoutMs = 120000): Promise<string> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const health = dockerDatabaseHealth(containerName);
+    if (health === 'healthy' || health === 'running' || health === 'unhealthy' || health === 'exited' || health === 'dead') {
+      return health;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  return dockerDatabaseHealth(containerName) || 'unknown';
+}
+
+export function dockerStartDatabase(containerName: string): ExecResult {
+  return run(`docker start ${containerName}`);
+}
+
+export function dockerStopDatabase(containerName: string): ExecResult {
+  return run(`docker stop ${containerName}`);
+}
+
+export function dockerRestartDatabase(containerName: string): ExecResult {
+  return run(`docker restart ${containerName}`);
+}
+
+export function dockerRemoveDatabase(containerName: string, volumeName?: string, removeVolume = false): void {
+  run(`docker rm -f ${containerName}`);
+  if (removeVolume && volumeName) run(`docker volume rm ${volumeName}`);
+}

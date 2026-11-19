@@ -1,4 +1,4 @@
-import type { Service, ServiceSummary, EnvVar, Pipeline, ContainerInfo, OperationLog, LogQuery } from './types';
+import type { Service, ServiceSummary, EnvVar, Pipeline, ContainerInfo, OperationLog, LogQuery, DatabaseInstance, DatabaseCreatePayload } from './types';
 
 const BASE = '/node-service-console/api';
 
@@ -161,6 +161,28 @@ export const updatePipeline = (id: string, pipeline: Pipeline) =>
 export const fetchContainers = () => request<ContainerInfo[]>('/containers');
 export const fetchContainerInspect = (id: string) => request<Record<string, unknown>>(`/containers/${id}/inspect`);
 export const fetchContainerLogs = (id: string, tail = 100) => request<string>(`/containers/${id}/logs?tail=${tail}`);
+
+/* databases */
+const dbPath = (id: string) => `/databases/${encodeURIComponent(id)}`;
+export const fetchDatabases = () => request<DatabaseInstance[]>('/databases');
+export const fetchDatabase = (id: string) => request<DatabaseInstance>(dbPath(id));
+export const createDatabase = (payload: DatabaseCreatePayload) =>
+  request<DatabaseInstance>('/databases', { method: 'POST', body: JSON.stringify(payload) });
+export const deleteDatabase = (id: string, confirmName: string, removeVolume: boolean) =>
+  request<{ ok: true }>(dbPath(id), {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmName, removeVolume }),
+  });
+export const startDatabase = (id: string) =>
+  request<{ ok: true }>(`${dbPath(id)}/start`, { method: 'POST' });
+export const stopDatabase = (id: string) =>
+  request<{ ok: true }>(`${dbPath(id)}/stop`, { method: 'POST' });
+export const restartDatabase = (id: string) =>
+  request<{ ok: true }>(`${dbPath(id)}/restart`, { method: 'POST' });
+export const fetchDatabaseLogs = (id: string, tail = 200) =>
+  request<string>(`${dbPath(id)}/logs?tail=${tail}`);
+export const fetchDatabaseStats = (id: string) =>
+  request<{ cpu: string; mem: string } | null>(`${dbPath(id)}/stats`);
 
 /* logs */
 export const fetchLogs = (query: LogQuery = {}) => {

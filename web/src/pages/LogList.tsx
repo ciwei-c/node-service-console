@@ -23,6 +23,11 @@ const actionLabelMap: Record<LogAction, { label: string; color: string }> = {
   webhook:         { label: 'Webhook',    color: 'purple' },
   'config-env':    { label: '环境变量',   color: 'orange' },
   'config-pipeline': { label: '流水线',   color: 'geekblue' },
+  'database-create': { label: '数据库创建', color: 'cyan' },
+  'database-delete': { label: '数据库删除', color: 'red' },
+  'database-start':  { label: '数据库启动', color: 'green' },
+  'database-stop':   { label: '数据库停止', color: 'orange' },
+  'database-restart': { label: '数据库重启', color: 'blue' },
 };
 
 const actionOptions = Object.entries(actionLabelMap).map(([value, { label }]) => ({

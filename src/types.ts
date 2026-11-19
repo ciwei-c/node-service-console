@@ -59,9 +59,73 @@ export interface StaticSite {
   updatedAt: string;
 }
 
+/* ── 数据库实例 ── */
+
+/** 持久化的数据库实例元数据（含敏感信息，仅服务端使用） */
+export interface DatabaseRecord {
+  id: string;
+  /** 实例名（全局唯一，用于容器名/数据卷名） */
+  name: string;
+  containerName: string;
+  image: string;
+  hostPort: number;
+  containerPort: number;
+  volumeName: string;
+  databaseName: string;
+  username: string;
+  password: string;
+  rootPassword: string;
+  managed: boolean;
+  memoryLimitMB?: number;
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** API 返回的数据库实例（列表中的密码会被掩码） */
+export interface DatabaseInstance {
+  id: string;
+  name: string;
+  containerName: string;
+  image: string;
+  hostPort?: number;
+  containerPort: number;
+  volumeName?: string;
+  databaseName?: string;
+  username?: string;
+  password?: string;
+  rootPassword?: string;
+  managed: boolean;
+  external: boolean;
+  status: 'running' | 'stopped' | 'restarting' | 'missing' | 'unknown';
+  health?: string;
+  containerId?: string;
+  ports?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  memoryLimitMB?: number;
+  note?: string;
+  cpuPercent?: string;
+  memUsage?: string;
+}
+
+export interface DatabaseCreatePayload {
+  name: string;
+  image?: string;
+  hostPort?: number;
+  databaseName?: string;
+  username?: string;
+  password?: string;
+  rootPassword?: string;
+  volumeName?: string;
+  memoryLimitMB?: number;
+  note?: string;
+}
+
 export interface Store {
   services: Service[];
   sites: StaticSite[];
+  databases?: DatabaseRecord[];
 }
 
 export interface LocalSettings {
@@ -175,7 +239,12 @@ export type LogAction =
   | 'delete'
   | 'webhook'
   | 'config-env'
-  | 'config-pipeline';
+  | 'config-pipeline'
+  | 'database-create'
+  | 'database-delete'
+  | 'database-start'
+  | 'database-stop'
+  | 'database-restart';
 
 export interface OperationLog {
   id: string;

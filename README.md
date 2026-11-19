@@ -89,6 +89,7 @@ web/                       # React 前端（Vite 构建）
 | SSH Key 认证 | 使用服务器 SSH 密钥拉取私有仓库，永不过期，无需 Token |
 | Webhook | GitHub/GitLab push 事件自动触发发布 |
 | 容器监控 | 列出所有 Docker 容器，查看详情/环境变量/端口/日志 |
+| 数据库管理 | 动态创建 MySQL 容器，查看状态/健康/日志，支持启停/重启/删除，并生成服务连接配置 |
 | 操作日志 | 全量操作记录，支持时间/服务/类型/结果/关键词筛选 |
 
 ## API 概览
@@ -117,6 +118,20 @@ web/                       # React 前端（Vite 构建）
 | GET | `/node-service-console/api/containers` | 容器列表 |
 | GET | `/node-service-console/api/containers/:id/inspect` | 容器详情 |
 | GET | `/node-service-console/api/containers/:id/logs` | 容器日志 |
+
+### 数据库
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/node-service-console/api/databases` | 数据库实例列表 |
+| POST | `/node-service-console/api/databases` | 创建 MySQL 实例 |
+| GET | `/node-service-console/api/databases/:id` | 实例详情（含连接信息） |
+| DELETE | `/node-service-console/api/databases/:id` | 删除托管实例 |
+| POST | `/node-service-console/api/databases/:id/start` | 启动 |
+| POST | `/node-service-console/api/databases/:id/stop` | 停止 |
+| POST | `/node-service-console/api/databases/:id/restart` | 重启 |
+| GET | `/node-service-console/api/databases/:id/logs` | 容器日志 |
+| GET | `/node-service-console/api/databases/:id/stats` | CPU/内存 |
 
 ### Webhook
 

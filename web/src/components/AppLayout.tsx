@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { Layout as AntLayout, Menu, Button, Popconfirm, Modal, Form, Input, message, Dropdown } from 'antd';
-import { AppstoreOutlined, ContainerOutlined, FileTextOutlined, LogoutOutlined, KeyOutlined, UserOutlined, GlobalOutlined, DashboardOutlined, BellOutlined, CodeOutlined, CloudOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, ContainerOutlined, FileTextOutlined, LogoutOutlined, KeyOutlined, UserOutlined, GlobalOutlined, DashboardOutlined, BellOutlined, CodeOutlined, CloudOutlined, DatabaseOutlined } from '@ant-design/icons';
 import { logout, changePassword } from '../api';
 
 const { Header, Content, Footer } = AntLayout;
@@ -9,6 +9,7 @@ const { Header, Content, Footer } = AntLayout;
 const menuItems = [
   { key: '/', icon: <AppstoreOutlined />, label: '服务管理' },
   { key: '/containers', icon: <ContainerOutlined />, label: '容器列表' },
+  { key: '/databases', icon: <DatabaseOutlined />, label: '数据库' },
   { key: '/sites', icon: <GlobalOutlined />, label: '静态站点' },
   { key: '/monitor', icon: <DashboardOutlined />, label: '系统监控' },
   { key: '/notify', icon: <BellOutlined />, label: '通知告警' },
@@ -25,6 +26,7 @@ export default function AppLayout() {
   const [form] = Form.useForm();
 
   const selectedKey = loc.pathname.startsWith('/containers') ? '/containers'
+    : loc.pathname.startsWith('/databases') ? '/databases'
     : loc.pathname.startsWith('/sites') ? '/sites'
     : loc.pathname.startsWith('/monitor') ? '/monitor'
     : loc.pathname.startsWith('/notify') ? '/notify'
